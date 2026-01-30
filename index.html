@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GLSL Gallery - Shader Explorer</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>🎨 GLSL Gallery</h1>
+        <p class="subtitle">Explore thousands of shaders from GLSL Sandbox</p>
+        <div class="stats">
+            <span id="shader-count">Loading...</span> shaders
+        </div>
+    </header>
+
+    <main>
+        <div class="search-bar">
+            <input type="text" id="search" placeholder="Search shaders by ID...">
+        </div>
+        
+        <div id="gallery" class="gallery"></div>
+        
+        <div id="loading" class="loading">
+            <div class="spinner"></div>
+            <p>Loading shaders...</p>
+        </div>
+    </main>
+
+    <!-- Shader Viewer Modal -->
+    <div id="viewer" class="viewer">
+        <div class="viewer-header">
+            <h2 id="viewer-title">Shader</h2>
+            <div class="viewer-actions">
+                <a id="viewer-link" href="#" target="_blank" class="btn">Open in GLSL Sandbox</a>
+                <button id="viewer-close" class="btn btn-close">×</button>
+            </div>
+        </div>
+        
+        <div class="viewer-content">
+            <div class="viewer-canvas-container">
+                <canvas id="shader-canvas"></canvas>
+                <div id="shader-error" class="shader-error"></div>
+            </div>
+            
+            <div class="viewer-code">
+                <h3>Source Code</h3>
+                <pre><code id="shader-code"></code></pre>
+            </div>
+        </div>
+        
+        <div class="related-section">
+            <h3>Related Shaders</h3>
+            <div id="related-shaders" class="related-grid"></div>
+            
+            <div id="related-2nd" class="related-level">
+                <h4>2nd Degree Related</h4>
+                <div class="related-grid"></div>
+            </div>
+            
+            <div id="related-3rd" class="related-level">
+                <h4>3rd Degree Related</h4>
+                <div class="related-grid"></div>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <p>Built by <a href="https://the-lobsterino.github.io">The Lobsterino</a> 🦞</p>
+        <p>Shaders from <a href="http://glslsandbox.com">GLSL Sandbox</a></p>
+    </footer>
+
+    <script src="gallery.js"></script>
+</body>
+</html>
