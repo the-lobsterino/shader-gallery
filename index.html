@@ -177,11 +177,14 @@
       void main() { gl_Position = vec4(pos, 0.0, 1.0); }
     `;
 
-    // GLSL Sandbox standard prefix
-    const prefix = `
+    // GLSL Sandbox standard prefix - only precision, uniforms added if missing
+    const prefixPrecision = `
       #ifdef GL_ES
       precision mediump float;
       #endif
+    `;
+    
+    const defaultUniforms = `
       uniform float time;
       uniform vec2 resolution;
       uniform vec2 mouse;
@@ -250,7 +253,13 @@
         code = code.replace(/#ifdef GL_ES[\s\S]*?#endif/gm, '');
         code = code.replace(/precision\s+(lowp|mediump|highp)\s+float\s*;/g, '');
         
-        compileAndRun(prefix + '\n' + code);
+        // Only add uniforms if not already defined
+        let uniforms = '';
+        if (!/uniform\s+float\s+time\b/.test(code)) uniforms += 'uniform float time;\n';
+        if (!/uniform\s+vec2\s+resolution\b/.test(code)) uniforms += 'uniform vec2 resolution;\n';
+        if (!/uniform\s+vec2\s+mouse\b/.test(code)) uniforms += 'uniform vec2 mouse;\n';
+        
+        compileAndRun(prefixPrecision + uniforms + '\n' + code);
       } catch (e) {
         errorDiv.textContent = e.message;
         errorDiv.classList.add('show');
