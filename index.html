@@ -172,22 +172,25 @@
       mouseY = 1.0 - (e.clientY - rect.top) / rect.height;
     });
 
+    // Vertex shader with common varyings that GLSL Sandbox shaders expect
     const vertSrc = `
       attribute vec2 pos;
-      void main() { gl_Position = vec4(pos, 0.0, 1.0); }
+      varying vec2 surfacePosition;
+      void main() {
+        surfacePosition = pos;
+        gl_Position = vec4(pos, 0.0, 1.0);
+      }
     `;
 
-    // GLSL Sandbox standard prefix - only precision, uniforms added if missing
+    // GLSL Sandbox standard prefix - only precision, uniforms/varyings added if missing
     const prefixPrecision = `
       #ifdef GL_ES
       precision mediump float;
       #endif
     `;
     
-    const defaultUniforms = `
-      uniform float time;
-      uniform vec2 resolution;
-      uniform vec2 mouse;
+    const defaultVaryings = `
+      varying vec2 surfacePosition;
     `;
 
     async function init() {
@@ -253,13 +256,14 @@
         code = code.replace(/#ifdef GL_ES[\s\S]*?#endif/gm, '');
         code = code.replace(/precision\s+(lowp|mediump|highp)\s+float\s*;/g, '');
         
-        // Only add uniforms if not already defined
-        let uniforms = '';
-        if (!/uniform\s+float\s+time\b/.test(code)) uniforms += 'uniform float time;\n';
-        if (!/uniform\s+vec2\s+resolution\b/.test(code)) uniforms += 'uniform vec2 resolution;\n';
-        if (!/uniform\s+vec2\s+mouse\b/.test(code)) uniforms += 'uniform vec2 mouse;\n';
+        // Only add uniforms/varyings if not already defined
+        let additions = '';
+        if (!/uniform\s+float\s+time\b/.test(code)) additions += 'uniform float time;\n';
+        if (!/uniform\s+vec2\s+resolution\b/.test(code)) additions += 'uniform vec2 resolution;\n';
+        if (!/uniform\s+vec2\s+mouse\b/.test(code)) additions += 'uniform vec2 mouse;\n';
+        if (!/varying\s+vec2\s+surfacePosition\b/.test(code)) additions += 'varying vec2 surfacePosition;\n';
         
-        compileAndRun(prefixPrecision + uniforms + '\n' + code);
+        compileAndRun(prefixPrecision + additions + '\n' + code);
       } catch (e) {
         errorDiv.textContent = e.message;
         errorDiv.classList.add('show');
