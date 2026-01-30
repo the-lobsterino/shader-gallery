@@ -1,0 +1,42 @@
+#ifdef GL_ES 
+precision mediump float;
+#endif
+
+#extension GL_OES_standard_derivatives : enable
+
+uniform float time;
+uniform vec2 mouse;
+uniform vec2 resolution;
+
+mat2 rotate(float a) {
+	float c = abs(cos(a)*.3),
+		s = abs(sin(a)*.2*tan(a/2.));
+	return mat2(c, -s, s, c);
+}
+
+
+void main() {
+	vec2 uv = (2. * gl_FragCoord.xy - resolution) / resolution.y;
+	uv*=2.;
+	vec3 color = vec3(0.);
+	vec3 rd = vec3(uv, -1.);
+		
+	float s = .5;
+	for (int i = 0; i < 8; i++) {
+		rd = abs(rd) / dot(rd, rd*2.); // kali iteration!! Thanks Kali
+		rd -= s;
+		rd.xy *= rotate(0. + time*0.11);
+		rd.xz *= rotate(.2 - time *0.231);
+		rd.zy *= rotate(0.1 + time *0.1131);
+		s *= .8;
+		float b = .5;
+		color.gb += .0019 / max(abs(rd.x*.8), abs(rd.y*.8));
+		color.rb += .0015 / max(abs(rd.y*0.6), abs(rd.z*0.6));
+		color.rg += .001 / max(abs(rd.x), abs(rd.z));
+		/*color.gb += smoothstep(.5 + b, .5, max(abs(uv.x), abs(uv.y))) * 
+			smoothstep(.45, .45 + b, max(abs(uv.x), abs(uv.y)));*/
+	}
+	color *= 0.4;
+	gl_FragColor = vec4(color, 1.);
+
+}

@@ -1,0 +1,89 @@
+// dogshit edit 4 u
+
+#ifdef GL_ES
+precision highp float;
+#endif
+
+uniform float time;
+uniform vec2 resolution;
+ 
+// smoke
+const int ITER_FRAGMENT = 3;
+float SMOKE_HEIGHT = 0.4;
+const float SMOKE_CHOPPY = 40.0;
+const float SMOKE_FREQ = 0.06;
+float SEA_TIME = 21.;
+mat2 octave_m = mat2(1.6,1.2,-1.2,1.6);
+
+float hash( vec2 p ) {
+	float h = dot(p,vec2(127.1,311.7));	
+    return fract(sin(h)*43758.5453123);
+}
+
+float noise( in vec2 p ) {
+    vec2 i = floor( p );
+    vec2 f = fract( p );	
+	vec2 u = f*f*(3.0-2.0*f);
+    return -1.0+2.0*mix( mix( hash( i + vec2(0.0,0.0) ), 
+                     hash( i + vec2(1.0,0.0) ), u.x),
+                mix( hash( i + vec2(0.0,1.0) ), 
+                     hash( i + vec2(1.0,1.0) ), u.x), u.y);
+}
+
+float sea_octave(vec2 uv, float choppy) {
+    uv += noise(uv);        
+    vec2 wv = 1.0-abs(sin(uv));
+    vec2 swv = abs(cos(uv));    
+    wv = mix(wv,swv,wv);
+    return pow(1.0-pow(wv.x * wv.y,0.65),choppy);
+}
+
+float map_detailed(vec3 p) {
+    float freq = SMOKE_FREQ;
+    float amp = SMOKE_HEIGHT;
+    float choppy = SMOKE_CHOPPY;
+    vec2 uv = p.xz; uv.x *= 0.75;
+    
+    float d, h = 0.0;    
+    for(int i = 0; i < ITER_FRAGMENT; i++) {        
+    	d = sea_octave((uv+SEA_TIME)*freq,choppy);
+    	d += sea_octave((uv-SEA_TIME)*freq,choppy);
+        h += d * amp;        
+    	uv *= octave_m; freq *= 1.9; amp *= 0.22;
+        choppy = mix(choppy,1.0,0.2);
+    }
+    return p.y - h;
+}
+
+void main( void ) {
+	vec2 gg = gl_FragCoord.xy;
+	gg.y += sin(time);
+	
+	
+	gg-= resolution*0.5;
+	
+	gg*=1.5+sin(time*0.42)*0.1;
+	
+	
+	gg.x += time*100.0;
+	
+	
+	SEA_TIME += 21.0+sin(time*0.1)*12.0;	
+	SMOKE_HEIGHT = (0.5+(sin(time*0.77)*0.5))+0.1;
+	
+	
+	float noiseVal = (1.0 - gg.y / resolution.y);
+	float x =gg.x / 12.-time + sin(gg.x*0.01+time*0.8);
+	float y = pow(noiseVal + noise(vec2(1.0,0.0)+gg.xy/resolution) * noiseVal + sin(gg.y*.0001), 0.9);
+	float z = gg.y / 10.-time + cos(gg.x*0.01+time*0.1);
+	gl_FragColor = vec4( vec3( map_detailed(vec3(x, y, z))), 1.0 );
+
+	float rradd = sin(50.0+gg.y*0.003+time*0.4+gg.x*0.001)*2.0;
+	rradd = -abs(rradd-0.4);
+	
+	if (gl_FragColor.r<0.0)
+		gl_FragColor.r *= (rradd-0.1);
+	gl_FragColor.g *= 1.3;
+	gl_FragColor.b *= 1.5;
+	
+}

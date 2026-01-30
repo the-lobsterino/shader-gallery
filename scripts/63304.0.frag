@@ -1,0 +1,2 @@
+#define f(a) 1.-abs(fract(a)-.5)
+precision lowp float;uniform float time;void main(){vec2 p=gl_FragCoord.xy*.1;float a=f(atan(p.y/p.x)*2.+time*.1);float r=length(p.xy)*2.;float v=min(f(a),f(r*r*2.-time))-.5;gl_FragColor=vec4(vec3(1.-v,1.-v-0.1,1.-v+0.1)*abs(a),1);}

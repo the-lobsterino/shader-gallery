@@ -1,0 +1,36 @@
+#ifdef GL_ES
+precision lowp float;
+#endif
+
+uniform float time;
+uniform vec2 mouse;
+uniform vec2 resolution;
+varying vec2 surfacePosition;
+#define time pow(time*0.1, 1.667) + sin(length(surfacePosition))/length(surfacePosition)
+float rand(int seed, float ray) {
+	return mod(sin(float(seed)*363.5346+ray*.6742454+pow(ray, 0.5))*6743.4365, 1.0);
+}
+
+void main( void ) {
+	float pi = 3.14159265359;
+	vec2 position = surfacePosition*(1.5+sin(time));
+	float ang = atan(position.y, position.x);
+	float dist = length(position);
+	gl_FragColor.rgb = vec3(0.4, 0.95, 1.15) * (pow(dist, -1.0) * 0.04);
+	for (float ray = 0.0; ray < 10.0; ray += 0.095) {
+		//float rayang = rand(5234, ray)*6.2+time*5.0*(rand(2534, ray)-rand(3545, ray));
+		float rayang = rand(5, ray)*6.2+(time*0.05-dist*.1001234567890)*20.0*(rand(2546, ray)-rand(5785, ray))-(rand(3545, ray)-rand(5467, ray));
+		rayang = mod(rayang, pi*2.0);
+		if (rayang < ang - pi) {rayang += pi*2.0;}
+		if (rayang > ang + pi) {rayang -= pi*2.0;}
+		float brite = .5 - abs(ang - rayang);
+		brite += dist * 0.1;
+		if (brite > 0.02) {
+			gl_FragColor.rgb += vec3(0.8+0.4*rand(8644, ray), 0.5+0.5*rand(4567, ray), 1.*pow(sin(time*.023+dist), 2.)+0.4*rand(7354, ray)) * brite * .112*pow(dist, -0.31415926535897932384626433);
+		}
+	}
+	gl_FragColor.a = 1.0;
+	gl_FragColor.rgb *= gl_FragColor.rgb;
+	gl_FragColor.rgb *= gl_FragColor.rgb;
+	gl_FragColor.rgb *= 1.5/length(gl_FragColor+vec4(sin(time), sin(time*time), cos(time), cos(time*time)));
+}

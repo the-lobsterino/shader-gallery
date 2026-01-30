@@ -1,0 +1,272 @@
+#ifdef GL_ES
+precision highp float;
+#endif
+//
+uniform float time;
+uniform vec2 mouse;
+uniform vec2 resolution;
+
+#define CHAR_SIZE vec2(6, 7)
+#define CHAR_SPACING vec2(6, 9)
+
+vec2 scale = vec2 (2.0, 3.0);
+vec2 res = resolution.xy / scale;
+vec2 start_pos = vec2(0);
+vec2 print_pos = vec2(0);
+vec2 print_pos_pre_move = vec2(0);
+vec3 text_color = vec3(1);
+
+/*     Font character 6 x 8
+Top left pixel is the most significant bit.
+Bottom right pixel is the least significant bit.
+
+ ███  | 
+█   █ |
+█   █ |  
+█   █ |
+█████ |
+█   █ |
+█   █ |
+
+011100 
+100010
+100010  
+100010
+111110
+100010
+100010
+
+011100 (upper 21 bits)
+100010 -> 011100 100010 100010 100 -> 935188
+100010
+100
+   010 (lower 21 bits)
+111110 -> 010 111110 100010 100010 -> 780450
+100010
+100010
+
+vec2(935188.0,780450.0)
+*/
+
+// Automatically generated from the sprite sheet here: 
+// http://uzebox.org/wiki/index.php?title=File:Font6x8.png
+#define _ col+=char(vec2(0.0,0.0),uv);
+#define _spc col+=char(vec2(0.0,0.0),uv)*text_color;
+#define _exc col+=char(vec2(276705.0,32776.0),uv)*text_color;
+#define _quo col+=char(vec2(1797408.0,0.0),uv)*text_color;
+#define _hsh col+=char(vec2(10738.0,1134484.0),uv)*text_color;
+#define _dol col+=char(vec2(538883.0,19976.0),uv)*text_color;
+#define _pct col+=char(vec2(1664033.0,68006.0),uv)*text_color;
+#define _amp col+=char(vec2(545090.0,174362.0),uv)*text_color;
+#define _apo col+=char(vec2(798848.0,0.0),uv)*text_color;
+#define _lbr col+=char(vec2(270466.0,66568.0),uv)*text_color;
+#define _rbr col+=char(vec2(528449.0,33296.0),uv)*text_color;
+#define _ast col+=char(vec2(10471.0,1688832.0),uv)*text_color;
+#define _crs col+=char(vec2(4167.0,1606144.0),uv)*text_color;
+#define _per col+=char(vec2(0.0,1560.0),uv)*text_color;
+#define _dsh col+=char(vec2(7.0,1572864.0),uv)*text_color;
+#define _com col+=char(vec2(0.0,1544.0),uv)*text_color;
+#define _lsl col+=char(vec2(1057.0,67584.0),uv)*text_color;
+#define _0 col+=char(vec2(935221.0,731292.0),uv)*text_color;
+#define _1 col+=char(vec2(274497.0,33308.0),uv)*text_color;
+#define _2 col+=char(vec2(934929.0,1116222.0),uv)*text_color;
+#define _3 col+=char(vec2(934931.0,1058972.0),uv)*text_color;
+#define _4 col+=char(vec2(137380.0,1302788.0),uv)*text_color;
+#define _5 col+=char(vec2(2048263.0,1058972.0),uv)*text_color;
+#define _6 col+=char(vec2(401671.0,1190044.0),uv)*text_color;
+#define _7 col+=char(vec2(2032673.0,66576.0),uv)*text_color;
+#define _8 col+=char(vec2(935187.0,1190044.0),uv)*text_color;
+#define _9 col+=char(vec2(935187.0,1581336.0),uv)*text_color;
+#define _col col+=char(vec2(195.0,1560.0),uv)*text_color;
+#define _scl col+=char(vec2(195.0,1544.0),uv)*text_color;
+#define _les col+=char(vec2(135300.0,66052.0),uv)*text_color;
+#define _equ col+=char(vec2(496.0,3968.0),uv)*text_color;
+#define _grt col+=char(vec2(528416.0,541200.0),uv)*text_color;
+#define _que col+=char(vec2(934929.0,1081352.0),uv)*text_color;
+#define _ats col+=char(vec2(935285.0,714780.0),uv)*text_color;
+#define _A col+=char(vec2(935188.0,780450.0),uv)*text_color;
+#define _B col+=char(vec2(1983767.0,1190076.0),uv)*text_color;
+#define _C col+=char(vec2(935172.0,133276.0),uv)*text_color;
+#define _D col+=char(vec2(1983764.0,665788.0),uv)*text_color;
+#define _E col+=char(vec2(2048263.0,1181758.0),uv)*text_color;
+#define _F col+=char(vec2(2048263.0,1181728.0),uv)*text_color;
+#define _G col+=char(vec2(935173.0,1714334.0),uv)*text_color;
+#define _H col+=char(vec2(1131799.0,1714338.0),uv)*text_color;
+#define _I col+=char(vec2(921665.0,33308.0),uv)*text_color;
+#define _J col+=char(vec2(66576.0,665756.0),uv)*text_color;
+#define _K col+=char(vec2(1132870.0,166178.0),uv)*text_color;
+#define _L col+=char(vec2(1065220.0,133182.0),uv)*text_color;
+#define _M col+=char(vec2(1142100.0,665762.0),uv)*text_color;
+#define _N col+=char(vec2(1140052.0,1714338.0),uv)*text_color;
+#define _O col+=char(vec2(935188.0,665756.0),uv)*text_color;
+#define _P col+=char(vec2(1983767.0,1181728.0),uv)*text_color;
+#define _Q col+=char(vec2(935188.0,698650.0),uv)*text_color;
+#define _R col+=char(vec2(1983767.0,1198242.0),uv)*text_color;
+#define _S col+=char(vec2(935171.0,1058972.0),uv)*text_color;
+#define _T col+=char(vec2(2035777.0,33288.0),uv)*text_color;
+#define _U col+=char(vec2(1131796.0,665756.0),uv)*text_color;
+#define _V col+=char(vec2(1131796.0,664840.0),uv)*text_color;
+#define _W col+=char(vec2(1131861.0,699028.0),uv)*text_color;
+#define _X col+=char(vec2(1131681.0,84130.0),uv)*text_color;
+#define _Y col+=char(vec2(1131794.0,1081864.0),uv)*text_color;
+#define _Z col+=char(vec2(1968194.0,133180.0),uv)*text_color;
+#define _lsb col+=char(vec2(925826.0,66588.0),uv)*text_color;
+#define _rsl col+=char(vec2(16513.0,16512.0),uv)*text_color;
+#define _rsb col+=char(vec2(919584.0,1065244.0),uv)*text_color;
+#define _pow col+=char(vec2(272656.0,0.0),uv)*text_color;
+#define _usc col+=char(vec2(0.0,62.0),uv)*text_color;
+#define _a col+=char(vec2(224.0,649374.0),uv)*text_color;
+#define _b col+=char(vec2(1065444.0,665788.0),uv)*text_color;
+#define _c col+=char(vec2(228.0,657564.0),uv)*text_color;
+#define _d col+=char(vec2(66804.0,665758.0),uv)*text_color;
+#define _e col+=char(vec2(228.0,772124.0),uv)*text_color;
+#define _f col+=char(vec2(401543.0,1115152.0),uv)*text_color;
+#define _g col+=char(vec2(244.0,665474.0),uv)*text_color;
+#define _h col+=char(vec2(1065444.0,665762.0),uv)*text_color;
+#define _i col+=char(vec2(262209.0,33292.0),uv)*text_color;
+#define _j col+=char(vec2(131168.0,1066252.0),uv)*text_color;
+#define _k col+=char(vec2(1065253.0,199204.0),uv)*text_color;
+#define _l col+=char(vec2(266305.0,33292.0),uv)*text_color;
+#define _m col+=char(vec2(421.0,698530.0),uv)*text_color;
+#define _n col+=char(vec2(452.0,1198372.0),uv)*text_color;
+#define _o col+=char(vec2(228.0,665756.0),uv)*text_color;
+#define _p col+=char(vec2(484.0,667424.0),uv)*text_color;
+#define _q col+=char(vec2(244.0,665474.0),uv)*text_color;
+#define _r col+=char(vec2(354.0,590904.0),uv)*text_color;
+#define _s col+=char(vec2(228.0,114844.0),uv)*text_color;
+#define _t col+=char(vec2(8674.0,66824.0),uv)*text_color;
+#define _u col+=char(vec2(292.0,1198868.0),uv)*text_color;
+#define _v col+=char(vec2(276.0,664840.0),uv)*text_color;
+#define _w col+=char(vec2(276.0,700308.0),uv)*text_color;
+#define _x col+=char(vec2(292.0,1149220.0),uv)*text_color;
+#define _y col+=char(vec2(292.0,1163824.0),uv)*text_color;
+#define _z col+=char(vec2(480.0,1148988.0),uv)*text_color;
+#define _lpa col+=char(vec2(401542.0,66572.0),uv)*text_color;
+#define _bar col+=char(vec2(266304.0,33288.0),uv)*text_color;
+#define _rpa col+=char(vec2(788512.0,1589528.0),uv)*text_color;
+#define _tid col+=char(vec2(675840.0,0.0),uv)*text_color;
+#define _lar col+=char(vec2(8387.0,1147904.0),uv)*text_color;
+#define _nl print_pos = start_pos - vec2(0,CHAR_SPACING.y);
+
+//Extracts bit b from the given number.
+float extract_bit(float n, float b)
+{
+	b = clamp(b,-1.0,22.0);
+	return floor(mod(floor(n / pow(2.0,floor(b))),2.0));   
+}
+
+//Returns the pixel at uv in the given bit-packed sprite.
+float sprite(vec2 spr, vec2 size, vec2 uv)
+{
+	uv = floor(uv);
+	float bit = (size.x-uv.x-1.0) + uv.y * size.x;  
+	bool bounds = all(greaterThanEqual(uv,vec2(0)))&& all(lessThan(uv,size)); 
+	return bounds ? extract_bit(spr.x, bit - 21.0) + extract_bit(spr.y, bit) : 0.0;
+}
+
+//Prints a character and moves the print position forward by 1 character width.
+vec3 char(vec2 ch, vec2 uv)
+{
+	float px = sprite(ch, CHAR_SIZE, uv - print_pos);
+	print_pos.x += CHAR_SPACING.x;
+	return vec3(px);
+}
+
+// Text coloring
+
+#define Red text_color = vec3(1,0,0);
+#define Green text_color = vec3(0,1,0);
+#define Blue text_color = vec3(0,1,0);
+#define Yellow text_color = vec3(1,1,0);
+#define Cyan text_color = vec3(0,1,1);
+#define Orange text_color = vec3(1,0.5,0);
+#define BlueGreen text_color = vec3(0,0.5,1);
+#define Violett text_color = vec3(0.5,0,1);
+
+#define TX(c) (res.x - (c * CHAR_SPACING.x)) * 0.5
+#define TY(c) (res.y - (c * CHAR_SPACING.y)) * 0.5
+#define BEGIN_TEXT(x,y) print_pos = floor(vec2(x,y)); start_pos = floor(vec2(x,y));
+
+vec3 Text(vec2 uv)
+{
+    	vec3 col = vec3(0.15);
+	
+     	BEGIN_TEXT (TX(20.0), TY(1.0))
+	Yellow _W _O _W _ _W _H _A _T _ _A _ Red _N _I _C _E _ _A _S _S _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _exc _exc _exc
+
+	BEGIN_TEXT (TX(20.0), TY(1.0) + 1.0)
+	Yellow _ _ _ _ _ _ _ _ _ _ _ Red _N _I _C _E _ _A _S _S _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _exc _exc _exc	
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+	BEGIN_TEXT ( TX(11.0), res.y*0.5)
+	print_pos += vec2(cos(time * 30.0)*96., 0.6*sin(time* 30.0)*48.);
+	Red _F Orange _A Yellow _G Green _G BlueGreen _O Violett _T _ Red _A Orange _S Yellow _S Green _exc
+	
+	BEGIN_TEXT ( TX(11.0), res.y*0.5)
+	print_pos += vec2(cos(time * 300.0)*96., 0.6*sin(time* 360.0)*48.);
+	Red _F Orange _A Yellow _G Green _G BlueGreen _O Violett _T _ Red _A Orange _S Yellow _S Green _exc	
+		
+	BEGIN_TEXT ( TX(11.0), res.y*0.5)
+	print_pos += vec2(cos(time * 130.0)*96., 0.6*sin(time* 360.0)*48.);
+	Red _F Orange _A Yellow _G Green _G BlueGreen _O Violett _T _ Red _A Orange _S Yellow _S Green _exc
+	
+	BEGIN_TEXT ( TX(11.0), res.y*0.5)
+	print_pos += vec2(cos(time * 390.0)*96., 0.6*sin(time* 360.0)*48.);
+	Red _F Orange _A Yellow _G Green _G BlueGreen _O Violett _T _ Red _A Orange _S Yellow _S Green _exc
+	
+
+	print_pos = vec2(mod(time * -60.0, res.x * 1.00) -290., 102.0 );
+	Red _G _O _O _D _N _E _S _S _ _M _E _exc _ _A _L _L _O _W _ _M _E _ _T _O _ _V _I _O _L _A _T _E _ _I _T _ _T _O _ _T _H _E _ _F _U _L _L _E _S _T _ _E _X _T _E _N _T _exc _ _O _R _ _S _E _N _D _ _F _E _E _T _ _P _I _C _S _ _Y _O _U _ _F _U _C _K _I _N _G _ _C _U _N _T _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+	print_pos = vec2(mod(time * -60.0, res.x * 1.00) -290., 101.0 );
+	Green _G _O _O _D _N _E _S _S _ _M _E _exc _ _A _L _L _O _W _ _M _E _ _T _O _ _V _I _O _L _A _T _E _ _I _T _ _T _O _ _T _H _E _ _F _U _L _L _E _S _T _ _E _X _T _E _N _T _exc _ _O _R _ _S _E _N _D _ _F _E _E _T _ _P _I _C _S _ _Y _O _U _ _F _U _C _K _I _N _G _ _C _U _N _T _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+	
+	print_pos = vec2(mod(time * -60.0, res.x * 1.00) -290., 100.0 );
+	Blue _G _O _O _D _N _E _S _S _ _M _E _exc _ _A _L _L _O _W _ _M _E _ _T _O _ _V _I _O _L _A _T _E _ _I _T _ _T _O _ _T _H _E _ _F _U _L _L _E _S _T _ _E _X _T _E _N _T _exc _ _O _R _ _S _E _N _D _ _F _E _E _T _ _P _I _C _S _ _Y _O _U _ _F _U _C _K _I _N _G _ _C _U _N _T _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+	
+	print_pos = vec2(mod(time * 60.0, res.x * 1.00) -290., 12.0 );
+	Red _G _O _O _D _N _E _S _S _ _M _E _exc _ _A _L _L _O _W _ _M _E _ _T _O _ _V _I _O _L _A _T _E _ _I _T _ _T _O _ _T _H _E _ _F _U _L _L _E _S _T _ _E _X _T _E _N _T _exc _ _O _R _ _S _E _N _D _ _F _E _E _T _ _P _I _C _S _ _Y _O _U _ _F _U _C _K _I _N _G _ _C _U _N _T _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+	print_pos = vec2(mod(time * 60.0, res.x * 1.00) -290., 11.0 );
+	Green _G _O _O _D _N _E _S _S _ _M _E _exc _ _A _L _L _O _W _ _M _E _ _T _O _ _V _I _O _L _A _T _E _ _I _T _ _T _O _ _T _H _E _ _F _U _L _L _E _S _T _ _E _X _T _E _N _T _exc _ _O _R _ _S _E _N _D _ _F _E _E _T _ _P _I _C _S _ _Y _O _U _ _F _U _C _K _I _N _G _ _C _U _N _T _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+	
+	print_pos = vec2(mod(time * 60.0, res.x * 1.00) -290., 10.0 );
+	Blue _G _O _O _D _N _E _S _S _ _M _E _exc _ _A _L _L _O _W _ _M _E _ _T _O _ _V _I _O _L _A _T _E _ _I _T _ _T _O _ _T _H _E _ _F _U _L _L _E _S _T _ _E _X _T _E _N _T _exc _ _O _R _ _S _E _N _D _ _F _E _E _T _ _P _I _C _S _ _Y _O _U _ _F _U _C _K _I _N _G _ _C _U _N _T _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+		
+		
+		
+		
+		
+		
+		
+		
+    	return col;
+}
+
+void main( void )
+{
+	vec2 uv = gl_FragCoord.xy / scale;
+	vec2 duv = floor(uv);
+    
+	vec3 pixel = Text(duv);
+    
+	vec3 col = 0.1 + pixel*0.9;
+	col *= (1.0 - distance(mod(uv,vec2(1.0)), vec2(0.65)))*1.2;
+	
+	gl_FragColor = vec4(vec3(col), 1.0);
+}

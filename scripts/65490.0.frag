@@ -1,0 +1,82 @@
+// 150620N - so cool! :) 
+
+#ifdef GL_ES
+precision mediump float;
+#endif
+
+#extension GL_OES_standard_derivatives : enable
+
+uniform float time;
+uniform vec2 mouse;
+uniform vec2 resolution;
+
+
+
+
+mat4 rotationMatrix(vec3 axis, float angle)
+{
+	axis = normalize(axis);
+	float s = sin(angle);
+	float c = cos(angle);
+	float oc = 1.0 - c;
+
+	return mat4(oc * axis.x * axis.x + c, oc * axis.x * axis.y - axis.z * s, oc * axis.z * axis.x + axis.y * s, 0.0,
+		oc * axis.x * axis.y + axis.z * s, oc * axis.y * axis.y + c, oc * axis.y * axis.z - axis.x * s, 0.0,
+		oc * axis.z * axis.x - axis.y * s, oc * axis.y * axis.z + axis.x * s, oc * axis.z * axis.z + c, 0.0,
+		0.0, 0.0, 0.0, 1.0);
+}
+
+vec3 rotate(vec3 v, vec3 axis, float angle)
+{
+	mat4 m = rotationMatrix(axis, angle);
+	return (m * vec4(v, 1.0)).xyz;
+}
+
+
+
+vec3 SUN_1 = vec3(0.714,0.494,0.357);
+vec3 SUN_2 = vec3(0.753,0.749,0.678);
+vec3 SUN_3 = vec3(0.741,0.745,0.753);
+vec3 SUN_4 = vec3(0.682,0.718,0.745);
+vec3 SUN_5 = vec3(0.782,0.589,0.385);
+
+float sigmoid(float x) {
+	return 2.0/(1. + exp2(-x)) - 1.0;
+}
+
+
+void main( void ) {
+	vec2 position = gl_FragCoord.xy;
+	vec2 aspect = vec2(1.,resolution.y/resolution.x );
+	position -= 0.5*resolution;
+	vec2 position2 = 0.5 + (position-0.5)/resolution*3.;
+	float filter = sigmoid(pow(2.,7.5)*(length(aspect) - 0.015))*0.5 +0.5;
+	// position = mix(position, position2, filter) - 0.5;
+		
+	// variant 1
+	// position = filter*position2;
+	
+	// variant 2
+	position = position2 * mix(position, position2, filter);
+	
+	
+	position = rotate(vec3(position.xy,0.), vec3(0.,0.,1.), 0.1*3.14159*sin(time)).xy;
+	
+
+	vec3 color = vec3(0.);
+	// float angle = atan(position.y,position.x);
+	// float d = length(position);
+	
+	color += 0.05/length(vec2(.04,2.*position.y+sin(position.x*10.+time*4.)))*SUN_1; // I'm sure there's an easier way to do this, this just happened to look nice and blurry.
+	color += 0.05/length(vec2(.06,3.*position.y+sin(position.x*1.+time*6.)))*SUN_2;
+	color += 0.05/length(vec2(.10,5.*position.y+sin(position.x*1.+time*10.)))*SUN_3;
+	color += 0.05/length(vec2(.14,7.*position.y+sin(position.x*1.+time*14.)))*SUN_4;
+	color += 0.05/length(vec2(.12,4.*position.y+sin(position.x*1.+time*18.)))*SUN_5;
+	
+	
+	// Rotate the color! :)
+	color = rotate(vec3(color), vec3(1.,0.,1.), .5*3.14159*sin(time));
+	
+	gl_FragColor = vec4(color, 1.0);
+	
+}

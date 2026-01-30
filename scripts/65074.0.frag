@@ -1,0 +1,254 @@
+/*
+ * Original shader from: https://www.shadertoy.com/view/WsByR1
+ */
+
+#ifdef GL_ES
+precision mediump float;
+#endif
+
+// glslsandbox uniforms
+uniform float time;
+uniform vec2 resolution;
+
+// shadertoy emulation
+#define iTime time
+#define iResolution resolution
+
+// Emulate some GLSL ES 3.x
+float tanh(float x) {
+    float ex = exp(2.0 * x);
+    return ((ex - 1.) / (ex + 1.));
+}
+
+// --------[ Original ShaderToy begins here ]---------- //
+// Created by mrange/2020
+// License Creative Commons Attribution-NonCommercial-ShareAlike 4.0 Unported License.
+
+// The Live Coders Conference - Online on twitch.tv April 9, 2020 - https://captcalli.github.io/LiveCodersConf/
+// Created a few shaders inspired by the online event, these shaders are not officially adopted just made for fun and to promote the event.
+
+// 2D shape created by combining 2D primitives from IQ's blog:
+//  http://www.iquilezles.org/www/articles/distfunctions2d/distfunctions2d.htm
+// pmin from IQ's blog on smooth minimum functions:
+//  http://www.iquilezles.org/www/articles/smin/smin.htm
+// warped fbms from IQ's blog:
+//  https://iquilezles.org/www/articles/warp/warp.htm
+
+#define PI     3.141592654
+#define TAU    (2.0*PI)
+#define SCA(a) vec2(sin(a), cos(a))
+#define TIME   (iTime+120.0)
+#define TTIME  (TIME*TAU)
+#define PERIOD 600.0
+
+const float a1 = PI/2.0;
+const float a2 = PI*4.5/6.0;
+
+const vec2 sca1 = SCA(a1);
+const vec2 sca2 = SCA(a2);
+
+const mat2 frot = mat2(0.80, 0.60, -0.60, 0.80);
+
+void rot(inout vec2 p, float a) {
+  float c = cos(a);
+  float s = sin(a);
+  p = vec2(c*p.x + s*p.y, -s*p.x + c*p.y);
+}
+
+float noise(vec2 p) {
+  float a = sin(p.x);
+  float b = sin(p.y);
+  float c = 0.5 + 0.5*cos(p.x + p.y);
+  float d = mix(a, b, c);
+  return d;
+}
+
+float fbm(vec2 p) {    
+  float f = 0.0;
+  float a = 1.0;
+  float s = 0.0;
+  float m = 2.0-0.1;
+  for (int x = 0; x < 4; ++x) {
+    f += a*noise(p); p = frot*p*m;
+    m += 0.01;
+    s += a;
+    a *= 0.45;
+  }
+  return f/s;
+}
+
+float warp(vec2 p, float offset, out vec2 v, out vec2 w) {
+  vec2 vx = vec2(0.0, 0.0);
+  vec2 vy = vec2(3.2, 1.3);
+
+  vec2 wx = vec2(1.7, 9.2);
+  vec2 wy = vec2(8.3, 2.8);
+
+  vec2 off = (1.75 + 0.5*cos(TTIME/60.0))*vec2(-5, 5);
+
+  p += mix(vec2(0.0), off, 0.5 + 0.5*tanh(offset));
+
+  rot(vx, TTIME/1000.0);
+  rot(vy, TTIME/900.0);
+
+  rot(wx, TTIME/800.0);
+  rot(wy, TTIME/700.0);
+
+  vec2 vv = vec2(fbm(p + vx), fbm(p + vy));  
+  vec2 ww = vec2(fbm(p + 3.0*vv + wx), fbm(p + 3.0*vv + wy));
+
+  float f = fbm(p + 2.25*ww);
+
+
+  v = vv;
+  w = ww;
+
+//  return tanh(f);
+  return f;
+}
+
+float mod1(inout float p, float size) {
+  float halfsize = size*0.5;
+  float c = floor((p + halfsize)/size);
+  p = mod(p + halfsize, size) - halfsize;
+  return c;
+}
+
+vec2 toPolar(vec2 p) {
+  return vec2(length(p), atan(p.y, p.x));
+}
+
+vec2 toRect(vec2 p) {
+  return vec2(p.x*cos(p.y), p.x*sin(p.y));
+}
+
+float pmin(float a, float b, float k) {
+  float h = max(k-abs(a-b), 0.0)/k;
+  return min(a, b) - h*h*k*(1.0/4.0);
+}
+
+float circle(vec2 p, float r) {
+  return length(p) - r;
+}
+
+float box(vec2 p, vec2 b, vec4 r) {
+  r.xy = (p.x>0.0)?r.xy : r.zw;
+  r.x  = (p.y>0.0)?r.x  : r.y;
+  vec2 q = abs(p)-b+r.x;
+  return min(max(q.x,q.y),0.0) + length(max(q,0.0)) - r.x;
+}
+
+float arc(vec2 p, vec2 sca, vec2 scb, float ra, float rb) {
+  p *= mat2(sca.x,sca.y,-sca.y,sca.x);
+  p.x = abs(p.x);
+  float k = (scb.y*p.x>scb.x*p.y) ? dot(p.xy,scb) : length(p.xy);
+  return sqrt(dot(p,p) + ra*ra - (2.0 - 0.000001)*ra*k) - rb;
+}
+
+float spokes(vec2 p, float s) {
+  vec2 pp = toPolar(p);
+  pp.y += TTIME*10.0/PERIOD;
+  mod1(pp.y, TAU/10.0);
+  pp.y += PI/2.0;
+  p = toRect(pp);
+  float ds = box(p, s*vec2(0.075, 0.5), s*vec4(0.04));
+  return ds;
+}
+
+float arcs(vec2 p, float s) {
+  
+  float d1 = arc(p, sca1, sca2, s*0.275, s*0.025);
+  float d2 = arc(p, sca1, sca2, s*0.18, s*0.025);
+  
+  return min(d1, d2);
+}
+
+float meeple(vec2 p, float s) {
+  float dh = box(p - s*vec2(0.0, -0.035), s*vec2(0.07, 0.1), s*vec4(0.065));
+  float dc = box(p - s*vec2(0.0, -0.22), s*vec2(0.15, 0.04), s*vec4(0.05, 0.02, 0.05, 0.02));
+  
+  return pmin(dh, dc, s*0.115);
+}
+
+float theLiveCoders(vec2 p, float s) {
+  float ds = spokes(p, s);
+  float dc = circle(p, 0.375*s);
+  float da = arcs(p, s);
+  float dm = meeple(p, s);
+  
+  float d = ds;
+  d = min(d, dc);
+  d = max(d, -da);
+  d = max(d, -dm);
+  
+  return d;
+}
+
+float df(vec2 p) {  
+  return theLiveCoders(p, 3.0);
+}
+
+vec3 normal(vec2 p, float offset) {
+  vec2 v;
+  vec2 w;
+  vec2 e = vec2(0.0001, 0);
+  
+  vec3 n;
+  n.x = warp(p + e.xy, offset, v, w) - warp(p - e.xy, offset, v, w);
+  n.y = 2.0*e.x;
+  n.z = warp(p + e.yx, offset, v, w) - warp(p - e.yx, offset, v, w);
+  
+  return normalize(n);
+}
+
+
+vec3 postProcess(vec3 col) {
+  col=pow(clamp(col,0.0,1.0),vec3(0.75));
+  col=col*0.6+0.4*col*col*(3.0-2.0*col);  // contrast
+  col=mix(col, vec3(dot(col, vec3(0.33))), -0.4);  // satuation
+  return col;
+}
+
+void mainImage(out vec4 fragColor, vec2 fragCoord) {
+  vec2 q = fragCoord/iResolution.xy;
+  vec2 p = -1. + 2. * q;
+  p.x *= iResolution.x/iResolution.y;
+
+  p *= 1.65;
+  vec3 col = vec3(1.0);
+ 
+  float d = df(p);
+  p += -0.025*TTIME*vec2(-1.0, 1.0);
+ 
+  vec2 v;
+  vec2 w;
+ 
+  float f = warp(p, d, v, w);
+  vec3 n = normal(p, d);
+
+  vec3 lig = normalize(vec3(0.6, -0.4, -0.4));
+  rot(lig.xz, TTIME/100.0);
+  float dif = max(dot(lig, n), 0.5);
+
+  const vec3 col1 = vec3(0.1, 0.3, 0.8);
+  const vec3 col2 = vec3(0.7, 0.3, 0.5);
+  
+  float c1 = dot(normalize(lig.xz), v)/length(v);
+  float c2 = dot(normalize(lig.xz), w)/length(w);
+  
+  col = pow(dif, 0.75)*tanh(pow(abs(f + 0.5), 1.5)) + c1*col1 + c2*col2;
+  col += 0.25*vec3(smoothstep(0.0, -0.0125, d));
+
+  col = postProcess(col);
+
+  col *= smoothstep(0.0, 16.0, iTime*iTime);
+  
+  fragColor = vec4(col, 1.0);
+}
+
+// --------[ Original ShaderToy ends here ]---------- //
+
+void main(void)
+{
+    mainImage(gl_FragColor, gl_FragCoord.xy);
+}

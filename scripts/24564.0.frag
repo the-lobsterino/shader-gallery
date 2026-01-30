@@ -1,0 +1,42 @@
+#ifdef GL_ES
+precision mediump float;
+#endif
+
+// dashxdr 20150417
+
+varying vec2 surfacePosition;
+uniform float time;
+
+void main()
+{
+	vec2 pos = surfacePosition;
+	vec3 color = vec3(0.0, 1.0, 0.5);
+
+#define NUM 5
+	float numf = float(NUM);
+	int besti = -1;
+	float bestd = 5000.0;
+	float size = 0.22;
+	float at = mod(time*1.0, 3.1415926*2.0);
+	float r = size*1.2;
+	for(int i=0;i<NUM;++i)
+	{
+		float a = at + 3.1415926*2.0*float(i)/numf;
+
+
+		vec2 xy = r*vec2(cos(a), sin(a));
+		float d = length(xy - pos);
+		if(d<size && (besti<0 || mod(float(NUM+i-besti), numf) > .5*numf))
+		{
+			bestd = d;
+			besti = i;
+		}
+	}
+	if(bestd<size*.97)
+	{
+		float rand = sin(float(besti)+.1);
+		color = fract(rand*vec3(10.0, 1000.0, 100000.0));
+	}
+
+	gl_FragColor =  vec4(color, 1.0);
+}

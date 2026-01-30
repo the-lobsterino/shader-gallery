@@ -1,0 +1,45 @@
+#ifdef GL_ES
+precision mediump float;
+#endif
+
+#extension GL_OES_standard_derivatives : enable
+
+uniform float time;
+uniform vec2 resolution;
+
+vec3 hash3( vec2 p )
+{
+    vec3 q = vec3( dot(p,vec2(127.1,311.7)), 
+				   dot(p,vec2(269.5,183.3)), 
+				   dot(p,vec2(419.2,371.9)) );
+	return fract(sin(q)*43758.5453);
+}
+
+float noise( in vec2 x)
+{
+    vec2 p = floor(x);
+    vec2 f = fract(x);
+		
+	float va = 0.0;
+    for( int j=-2; j<=2; j++ )
+    for( int i=-2; i<=2; i++ )
+    {
+        vec2 g = vec2( float(i),float(j) );
+		vec3 o = hash3( p + g );
+		vec2 r = g - f + o.xy;
+		float d = sqrt(dot(r,r));
+	    float ripple = max(mix(smoothstep(0.99,0.999,max(cos(d - time * 2. + (o.x + o.y) * 5.0), 0.)), 0., d), 0.);
+        va += ripple;
+    }
+	
+    return va;
+}
+
+void main( void ) {
+
+	vec2 uv = ( gl_FragCoord.xy / resolution.xy );
+
+	float f = noise( 12.0*uv) * smoothstep(0.0,0.2, sin(uv.x*3.151592) * sin(uv.y * 3.141592));
+	vec3 normal = vec3(-dFdx(f), -dFdy(f), 0.5) + 0.5;
+	gl_FragColor = vec4( normal, 1.0 );
+}

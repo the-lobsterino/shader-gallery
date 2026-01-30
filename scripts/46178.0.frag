@@ -1,0 +1,5 @@
+Console.WRİTE
+	
+	
+	
+	SS

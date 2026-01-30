@@ -1,0 +1,1136 @@
+/*R050506作例　御手玉　by ニシタマオ（Tamao Nishi, the sea panther)*/
+/*サンドボックス上での試験用、簡易レイトレシステム、反射・屈折、ぼかし影、カラーパレット機能付（R050505版）*/
+/*直近の改修：前処理機能追加、過剰機能を削除、熊体機能改善*/
+precision highp float;
+uniform vec2 resolution;
+uniform float time;
+uniform vec2 mouse;
+
+float nTime =time *1.0;
+vec4 VMouse =vec4((mouse -0.5) *vec2(1,-1), 0, nTime);
+
+const bool cbSetting_March2nd_Reflect =false;
+const bool cbSetting_March2nd_Refract =false;
+const bool cbSetting_CeilFloor =false;
+const float cnSetting_CeilFloor =0.25;
+const bool cbSetting_Back =true;
+const bool cbSetting_Front =true;
+const bool cbSetting_Effect_Before1st =true;
+const bool cbSetting_Effect_Before2nd_Reflect =true;
+const bool cbSetting_Effect_Before2nd_Refract =true;
+const bool cbSetting_Effect1st =true;
+const bool cbSetting_Effect2nd_Reflect =true;
+const bool cbSetting_Effect2nd_Refract =true;
+const bool cbSetting_Effect_After1st =true;
+const bool cbSetting_Effect_After2nd_Reflect =true;
+const bool cbSetting_Effect_After2nd_Refract =true;
+const bool cbSetting_Refrax =false;
+const bool cbSetting_Preprocess =true;
+
+vec4 VP_DefaultCamera =vec4(0, 2,-4, 0);
+
+const int ciDefinition =100;
+float cnMarchStepAdjust =0.5;
+float cnMarchStepLimit =1e+6;
+
+vec4 VMisc00, VMisc01, VMisc02, VMisc03;
+vec4 aVMisc00[16],aVMisc01[16],aVMisc02[16],aVMisc03[16];
+
+struct sface{
+	float nDistance;
+	vec4 VColor;
+	vec3 V3Real_Reflect_Refract;
+	float nRefrax;
+	int ID_Object;
+	int ID_Pallet;
+	vec4 VP;
+	vec4 VMisc00, VMisc01, VMisc02, VMisc03;
+};
+
+sface SF_Default;
+
+sface fSFSet_Default(void){
+	sface SF;
+	SF.VColor =vec4(1);
+	SF.nDistance =1e+6;
+	SF.V3Real_Reflect_Refract =vec3(1);
+	SF.nRefrax =0.75;
+	return SF;
+}
+
+sface fSFSet_Default(float nDistance){
+	sface SF =fSFSet_Default();
+	SF.nDistance =nDistance;
+	return SF;
+}
+
+struct smarch{
+	vec3 V3Direction;
+	vec3 V3P_Start;
+	vec3 V3P;
+	float nLength;
+	float nDistance_Min;
+	bool bTouch;
+	int iLoop;
+	float nLoop;
+	vec3 V3NormalLine;
+};
+
+sface fSFMin(sface SF0, sface SF1){
+	if(SF0.nDistance < SF1.nDistance){
+		return SF0;
+	}else{
+		return SF1;
+	}
+}
+
+sface fSFMin(sface SF0, sface SF1, float nK){
+
+	sface SF =fSFMin(SF0, SF1);
+
+	float nP0 =SF0.nDistance, nP1 =SF1.nDistance;
+	float nH =exp(-nP0 *nK) +exp(-nP1 *nK);
+	float nP =-log(nH) /nK;
+	SF.nDistance = nP;
+
+	float nFusion =abs(nP -nP0) /(abs(nP -nP0) +abs(nP -nP1));
+
+	if(true){	/*色彩、反射・屈折率モチャモチャ合成*/
+		SF.VColor =mix(SF0.VColor, SF1.VColor, nFusion);
+		SF.V3Real_Reflect_Refract =mix(normalize(SF0.V3Real_Reflect_Refract), normalize(SF1.V3Real_Reflect_Refract), nFusion);
+		SF.nRefrax =mix(SF0.nRefrax, SF1.nRefrax, nFusion);
+	}
+	return SF;
+}
+
+mat3 fM3RotateX(float nR){	return mat3( 1, 0, 0, 0, cos(nR),-sin(nR), 0, sin(nR), cos(nR));}
+mat3 fM3RotateY(float nR){	return mat3( cos(nR), 0, sin(nR), 0, 1, 0,-sin(nR), 0, cos(nR));}
+mat3 fM3RotateZ(float nR){	return mat3( cos(nR),-sin(nR), 0, sin(nR), cos(nR), 0, 0, 0, 1);}
+
+mat3 fM3Rotate(vec3 V3R){
+	mat3 M3R =mat3(1,0,0, 0,1,0, 0,0,1);
+	M3R *=fM3RotateZ(V3R.z);
+	M3R *=fM3RotateX(V3R.x);
+	M3R *=fM3RotateY(V3R.y);
+	return M3R;
+}
+
+mat2 fM2Rotate(float nR){
+	return mat2( cos(nR),-sin(nR), sin(nR), cos(nR));
+}
+
+float fNMin(float nP1, float nP2, float nK){
+	float nH =exp(-nP1 *nK) +exp(-nP2 *nK);
+	nH = -log(nH) /nK;
+	return nH;
+}
+
+float fNMin(float nP1, float nP2){
+	return min(nP1, nP2);
+}
+
+int fISequencer(int iCycle, int iSQ, float nTime){
+	return	int(mod(nTime, float(iCycle)) /float(iCycle) *float(iSQ));
+}
+
+int fISequencer(int iCycle, int iSQ){
+	return	fISequencer(iCycle, iSQ, nTime);
+}
+
+vec4 fVN(float nP){
+	vec4 VCycle =vec4( 11 *13 *17, 11 *13, 11, 1);
+	vec4 VLS =fract(VCycle *nP);
+	return VLS;
+}
+
+float fNRandom(vec2 V2P){    return fract(sin(dot(V2P +1e2,vec2(12.9898,78.233))) * 43758.5453);}
+float fNRandom(vec3 V3P){    return fNRandom(vec2(fNRandom(V3P.xy), V3P.z));}
+float fNRandom(float nP){    return fNRandom(vec2(nP,1));}
+float fNRandom(int   iP){    return fNRandom(vec2(iP,1));}
+
+//文字列形状生成機能（R050502版）
+vec3 fV3LL(vec4 VP, vec4 VA, vec4 VB){
+	float nRadius =VA.w;
+	vec3 V3PA =VP.xyz -VA.xyz, V3BA =VB.xyz -VA.xyz;
+	float nA =clamp(dot(V3PA, V3BA) /dot(V3BA, V3BA), 0.0, 1.0);
+	vec3 V3P =V3PA -V3BA *nA;
+	return V3P;
+}
+
+float fNLL(vec4 VP, vec4 VA, vec4 VB){
+	float NP, nRadius =VA.w;
+	vec3 V3P =fV3LL(VP, VA, VB);
+
+	/*線分の形状*/
+	NP =length(V3P) -nRadius *0.5;
+
+	return NP;
+}
+
+float fNLetters00(vec4 VP){
+	float NP =1e+6;
+		{ float nE =float(1);  vec3 V3C =vec3(2.5,2.5,1) *nE,  V3D =vec3(5,0,0) *nE, V3P;V3P.x -=V3C.x;V3P.x -=V3C.x;V3P.x -=V3C.x;V3P.x -=V3C.x;V3P.x -=V3C.x;V3P.x -=V3C.x; {   vec4 VP_Keep =VP;   VP.xyz -=V3P;{ float nE =nE;  vec4 VA, VB; VA.w =float(1) *nE;{ VA.xy =vec2(2,2) *nE; VB.xy =vec2(2,-2) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(2,-2) *nE; VB.xy =vec2(-2,-2) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(-2,-2) *nE; VB.xy =vec2(-2,0) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(2,-2) *nE; VB.xy =vec2(-2,-2) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(-2,-2) *nE; VB.xy =vec2(-2,0) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(-2,-2) *nE; VB.xy =vec2(-2,0) *nE; NP =min(NP, fNLL(VP, VA, VB));}}   VP =VP_Keep; }V3P +=V3D; {   vec4 VP_Keep =VP;   VP.xyz -=V3P;{ float nE =nE;  vec4 VA, VB; VA.w =float(1) *nE;{ VA.xy =vec2(-2,2) *nE; VB.xy =vec2(-2,-2) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(-2,-2) *nE; VB.xy =vec2(2,-2) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(2,-2) *nE; VB.xy =vec2(2,2) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(-2,-2) *nE; VB.xy =vec2(2,-2) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(2,-2) *nE; VB.xy =vec2(2,2) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(2,-2) *nE; VB.xy =vec2(2,2) *nE; NP =min(NP, fNLL(VP, VA, VB));}}   VP =VP_Keep; }V3P +=V3D; {   vec4 VP_Keep =VP;   VP.xyz -=V3P;{ float nE =nE;  vec4 VA, VB; VA.w =float(1) *nE;{ VA.xy =vec2(2,2) *nE; VB.xy =vec2(-2,2) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(-2,2) *nE; VB.xy =vec2(-2,-2) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(-2,-2) *nE; VB.xy =vec2(2,-2) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(2,-2) *nE; VB.xy =vec2(2,0) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(2,0) *nE; VB.xy =vec2(0,0) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(-2,2) *nE; VB.xy =vec2(-2,-2) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(-2,-2) *nE; VB.xy =vec2(2,-2) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(2,-2) *nE; VB.xy =vec2(2,0) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(2,0) *nE; VB.xy =vec2(0,0) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(-2,-2) *nE; VB.xy =vec2(2,-2) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(2,-2) *nE; VB.xy =vec2(2,0) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(2,0) *nE; VB.xy =vec2(0,0) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(2,-2) *nE; VB.xy =vec2(2,0) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(2,0) *nE; VB.xy =vec2(0,0) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(2,0) *nE; VB.xy =vec2(0,0) *nE; NP =min(NP, fNLL(VP, VA, VB));}}   VP =VP_Keep; }V3P +=V3D; {   vec4 VP_Keep =VP;   VP.xyz -=V3P;{ float nE =nE;  vec4 VA, VB; VA.w =float(1) *nE;{ VA.xy =vec2(2,2) *nE; VB.xy =vec2(-2,2) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(-2,2) *nE; VB.xy =vec2(-2,-2) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(-2,-2) *nE; VB.xy =vec2(2,-2) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(2,-2) *nE; VB.xy =vec2(2,0) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(2,0) *nE; VB.xy =vec2(0,0) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(-2,2) *nE; VB.xy =vec2(-2,-2) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(-2,-2) *nE; VB.xy =vec2(2,-2) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(2,-2) *nE; VB.xy =vec2(2,0) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(2,0) *nE; VB.xy =vec2(0,0) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(-2,-2) *nE; VB.xy =vec2(2,-2) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(2,-2) *nE; VB.xy =vec2(2,0) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(2,0) *nE; VB.xy =vec2(0,0) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(2,-2) *nE; VB.xy =vec2(2,0) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(2,0) *nE; VB.xy =vec2(0,0) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(2,0) *nE; VB.xy =vec2(0,0) *nE; NP =min(NP, fNLL(VP, VA, VB));}}   VP =VP_Keep; }V3P +=V3D; {   vec4 VP_Keep =VP;   VP.xyz -=V3P;{ float nE =nE;  vec4 VA, VB; VA.w =float(1) *nE;{ VA.xy =vec2(-2,2) *nE; VB.xy =vec2(-2,-2) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(-2,-2) *nE; VB.xy =vec2(2,-2) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(-2,-2) *nE; VB.xy =vec2(2,-2) *nE; NP =min(NP, fNLL(VP, VA, VB));}}   VP =VP_Keep; }V3P +=V3D; {   vec4 VP_Keep =VP;   VP.xyz -=V3P;{ float nE =nE;  vec4 VA, VB; VA.w =float(1) *nE;{ VA.xy =vec2(2,2) *nE; VB.xy =vec2(-2,2) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(-2,2) *nE; VB.xy =vec2(-2,-2) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(-2,-2) *nE; VB.xy =vec2(2,-2) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(-2,2) *nE; VB.xy =vec2(-2,-2) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(-2,-2) *nE; VB.xy =vec2(2,-2) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(-2,-2) *nE; VB.xy =vec2(2,-2) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(-2,0) *nE; VB.xy =vec2(2,0) *nE; NP =min(NP, fNLL(VP, VA, VB));}}   VP =VP_Keep; }V3P +=V3D; {   vec4 VP_Keep =VP;   VP.xyz -=V3P;{ float nE =nE;  vec4 VA, VB; VA.w =float(1) *nE;{ VA.xy =vec2(-2,-2) *nE; VB.xy =vec2(-2,2) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(-2,2) *nE; VB.xy =vec2(2,1) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(2,1) *nE; VB.xy =vec2(-2,0) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(-2,2) *nE; VB.xy =vec2(2,1) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(2,1) *nE; VB.xy =vec2(-2,0) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(2,1) *nE; VB.xy =vec2(-2,0) *nE; NP =min(NP, fNLL(VP, VA, VB));}{ VA.xy =vec2(0,0) *nE; VB.xy =vec2(2,-2) *nE; NP =min(NP, fNLL(VP, VA, VB));}}   VP =VP_Keep; }V3P +=V3D;}
+
+	return NP;
+}
+
+/*ここまで*/
+
+//熊体形状生成機能、中割機能付（R050503版）by ニシタマオ
+//	主要関数（R050503版）
+
+struct sskelton{
+	vec4 VP_Cntr, VP_Body, VP_Shld, VP_Neck, VP_Head, VP_ArRU, VP_ArLU, VP_ArRL, VP_ArLL, VP_LeRU, VP_LeLU, VP_LeRL, VP_LeLL, VP_HndR, VP_HndL, VP_FotR, VP_FotL;
+	vec4 VR_Cntr, VR_Body, VR_Shld, VR_Neck, VR_Head, VR_ArRU, VR_ArLU, VR_ArRL, VR_ArLL, VR_LeRU, VR_LeLU, VR_LeRL, VR_LeLL, VR_HndR, VR_HndL, VR_FotR, VR_FotL;
+
+	vec4 VP;
+	vec4  VMisc00, VMisc01, VMisc02, VMisc03;
+	float nMisc00, nMisc01, nMisc02, nMisc03;
+};
+
+sskelton SS_Default;
+
+sskelton fSSkeltonMake(sskelton SS){
+	SS.VR_Cntr.xyz;
+	SS.VR_Body.xyz;
+	SS.VR_Shld.xyz +=SS.VR_Body.xyz *SS.VR_Shld.w;
+	SS.VR_Neck.xyz +=SS.VR_Shld.xyz *SS.VR_Neck.w;
+	SS.VR_Head.xyz +=SS.VR_Neck.xyz *SS.VR_Head.w;
+
+	SS.VR_ArRU.xyz +=SS.VR_Shld.xyz *SS.VR_ArRU.w;
+	SS.VR_ArLU.xyz +=SS.VR_Shld.xyz *SS.VR_ArLU.w;
+
+	SS.VR_ArRL.xyz +=SS.VR_ArRU.xyz *SS.VR_ArRL.w;
+	SS.VR_ArLL.xyz +=SS.VR_ArLU.xyz *SS.VR_ArLL.w;
+
+	SS.VR_HndR.xyz +=SS.VR_ArRL.xyz *SS.VR_HndR.w;
+	SS.VR_HndL.xyz +=SS.VR_ArLL.xyz *SS.VR_HndL.w;
+
+	SS.VR_LeRU.xyz +=SS.VR_Body.xyz *SS.VR_LeRU.w;
+	SS.VR_LeLU.xyz +=SS.VR_Body.xyz *SS.VR_LeLU.w;
+
+	SS.VR_LeRL.xyz +=SS.VR_LeRU.xyz *SS.VR_LeRL.w;
+	SS.VR_LeLL.xyz +=SS.VR_LeLU.xyz *SS.VR_LeLL.w;
+
+	SS.VR_FotR.xyz +=SS.VR_LeRL.xyz *SS.VR_FotR.w;
+	SS.VR_FotL.xyz +=SS.VR_LeLL.xyz *SS.VR_FotL.w;
+
+	SS.VP_Shld.xyz *=fM3Rotate(SS.VR_Body.xyz);
+	SS.VP_Neck.xyz *=fM3Rotate(SS.VR_Shld.xyz);
+	SS.VP_Head.xyz *=fM3Rotate(SS.VR_Neck.xyz);
+
+	SS.VP_ArRU.xyz *=fM3Rotate(SS.VR_Shld.xyz);
+	SS.VP_ArLU.xyz *=fM3Rotate(SS.VR_Shld.xyz);
+
+	SS.VP_ArRL.xyz *=fM3Rotate(SS.VR_ArRU.xyz);
+	SS.VP_ArLL.xyz *=fM3Rotate(SS.VR_ArLU.xyz);
+
+	SS.VP_HndR.xyz *=fM3Rotate(SS.VR_ArRL.xyz);
+	SS.VP_HndL.xyz *=fM3Rotate(SS.VR_ArLL.xyz);
+
+	SS.VP_LeRU.xyz *=fM3Rotate(SS.VR_Body.xyz);
+	SS.VP_LeLU.xyz *=fM3Rotate(SS.VR_Body.xyz);
+
+	SS.VP_LeRL.xyz *=fM3Rotate(SS.VR_LeRU.xyz);
+	SS.VP_LeLL.xyz *=fM3Rotate(SS.VR_LeLU.xyz);
+
+	SS.VP_FotR.xyz *=fM3Rotate(SS.VR_LeRL.xyz);
+	SS.VP_FotL.xyz *=fM3Rotate(SS.VR_LeLL.xyz);
+
+	SS.VP_Body.xyz +=SS.VP_Cntr.xyz;
+	SS.VP_Shld.xyz +=SS.VP_Body.xyz;
+	SS.VP_Neck.xyz +=SS.VP_Shld.xyz;
+	SS.VP_Head.xyz +=SS.VP_Neck.xyz;
+
+	SS.VP_ArRU.xyz +=SS.VP_Shld.xyz;
+	SS.VP_ArLU.xyz +=SS.VP_Shld.xyz;
+
+	SS.VP_ArRL.xyz +=SS.VP_ArRU.xyz;
+	SS.VP_ArLL.xyz +=SS.VP_ArLU.xyz;
+
+	SS.VP_HndR.xyz +=SS.VP_ArRL.xyz;
+	SS.VP_HndL.xyz +=SS.VP_ArLL.xyz;
+
+	SS.VP_LeRU.xyz +=SS.VP_Body.xyz;
+	SS.VP_LeLU.xyz +=SS.VP_Body.xyz;
+
+	SS.VP_LeRL.xyz +=SS.VP_LeRU.xyz;
+	SS.VP_LeLL.xyz +=SS.VP_LeLU.xyz;
+
+	SS.VP_FotR.xyz +=SS.VP_LeRL.xyz;
+	SS.VP_FotL.xyz +=SS.VP_LeLL.xyz;
+
+	SS_Default =SS;
+	return SS;
+}
+
+sskelton fSSChange_Inbetween(sskelton SSP, sskelton SSN, float nIB){
+	float nP = +nIB *0.5 +0.5, nN = -nIB *0.5 +0.5;
+	sskelton SS =SSP;
+	SS.VP_Cntr =	SSP.VP_Cntr *nP +SSN.VP_Cntr *nN;
+	SS.VP_Body =	SSP.VP_Body *nP +SSN.VP_Body *nN;
+	SS.VP_Shld =	SSP.VP_Shld *nP +SSN.VP_Shld *nN;
+	SS.VP_Neck =	SSP.VP_Neck *nP +SSN.VP_Neck *nN;
+	SS.VP_Head =	SSP.VP_Head *nP +SSN.VP_Head *nN;
+	SS.VP_ArRU =	SSP.VP_ArRU *nP +SSN.VP_ArRU *nN;
+	SS.VP_ArLU =	SSP.VP_ArLU *nP +SSN.VP_ArLU *nN;
+	SS.VP_ArRL =	SSP.VP_ArRL *nP +SSN.VP_ArRL *nN;
+	SS.VP_ArLL =	SSP.VP_ArLL *nP +SSN.VP_ArLL *nN;
+	SS.VP_LeRU =	SSP.VP_LeRU *nP +SSN.VP_LeRU *nN;
+	SS.VP_LeLU =	SSP.VP_LeLU *nP +SSN.VP_LeLU *nN;
+	SS.VP_LeRL =	SSP.VP_LeRL *nP +SSN.VP_LeRL *nN;
+	SS.VP_LeLL =	SSP.VP_LeLL *nP +SSN.VP_LeLL *nN;
+	SS.VP_HndR =	SSP.VP_HndR *nP +SSN.VP_HndR *nN;
+	SS.VP_HndL =	SSP.VP_HndL *nP +SSN.VP_HndL *nN;
+	SS.VP_FotR =	SSP.VP_FotR *nP +SSN.VP_FotR *nN;
+	SS.VP_FotL =	SSP.VP_FotL *nP +SSN.VP_FotL *nN;
+
+	SS.VR_Cntr =	SSP.VR_Cntr *nP +SSN.VR_Cntr *nN;
+	SS.VR_Body =	SSP.VR_Body *nP +SSN.VR_Body *nN;
+	SS.VR_Shld =	SSP.VR_Shld *nP +SSN.VR_Shld *nN;
+	SS.VR_Neck =	SSP.VR_Neck *nP +SSN.VR_Neck *nN;
+	SS.VR_Head =	SSP.VR_Head *nP +SSN.VR_Head *nN;
+	SS.VR_ArRU =	SSP.VR_ArRU *nP +SSN.VR_ArRU *nN;
+	SS.VR_ArLU =	SSP.VR_ArLU *nP +SSN.VR_ArLU *nN;
+	SS.VR_ArRL =	SSP.VR_ArRL *nP +SSN.VR_ArRL *nN;
+	SS.VR_ArLL =	SSP.VR_ArLL *nP +SSN.VR_ArLL *nN;
+	SS.VR_LeRU =	SSP.VR_LeRU *nP +SSN.VR_LeRU *nN;
+	SS.VR_LeLU =	SSP.VR_LeLU *nP +SSN.VR_LeLU *nN;
+	SS.VR_LeRL =	SSP.VR_LeRL *nP +SSN.VR_LeRL *nN;
+	SS.VR_LeLL =	SSP.VR_LeLL *nP +SSN.VR_LeLL *nN;
+	SS.VR_HndR =	SSP.VR_HndR *nP +SSN.VR_HndR *nN;
+	SS.VR_HndL =	SSP.VR_HndL *nP +SSN.VR_HndL *nN;
+	SS.VR_FotR =	SSP.VR_FotR *nP +SSN.VR_FotR *nN;
+	SS.VR_FotL =	SSP.VR_FotL *nP +SSN.VR_FotL *nN;
+	return SS;
+}
+
+void fExchangeV(inout vec4 VR, inout vec4 VL){
+	vec4 Vtmp =VR;
+	VR =VL, VL =Vtmp;
+} 
+
+sskelton fSSChange_MirrorX(sskelton SS){
+	SS.VR_Cntr.yz *=-1.0;
+	SS.VR_Body.yz *=-1.0;
+	SS.VR_Shld.yz *=-1.0;
+	SS.VR_Neck.yz *=-1.0;
+	SS.VR_Head.yz *=-1.0;
+	SS.VR_ArRU.yz *=-1.0;
+	SS.VR_ArLU.yz *=-1.0; 
+	SS.VR_ArRL.yz *=-1.0;
+	SS.VR_ArLL.yz *=-1.0;
+	SS.VR_LeRU.yz *=-1.0;
+	SS.VR_LeLU.yz *=-1.0; 
+	SS.VR_LeRL.yz *=-1.0; 
+	SS.VR_LeLL.yz *=-1.0;
+	SS.VR_HndR.yz *=-1.0;
+	SS.VR_HndL.yz *=-1.0; 
+	SS.VR_FotR.yz *=-1.0; 
+	SS.VR_FotL.yz *=-1.0;
+	fExchangeV(SS.VR_ArRU, SS.VR_ArLU);
+	fExchangeV(SS.VR_ArRL, SS.VR_ArLL);
+	fExchangeV(SS.VR_LeRU, SS.VR_LeLU);
+	fExchangeV(SS.VR_LeRL, SS.VR_LeLL);
+	fExchangeV(SS.VR_HndR, SS.VR_HndL);
+	fExchangeV(SS.VR_FotR, SS.VR_FotL);
+
+	SS.VP_Cntr.x *=-1.0;
+	return SS;
+}
+
+sskelton fSSRChange_Multiple(sskelton SS, vec4 VD){
+	SS.VR_Cntr *= VD;
+	SS.VR_Body *= VD;
+	SS.VR_Shld *= VD;
+	SS.VR_Neck *= VD;
+	SS.VR_Head *= VD;
+	SS.VR_ArRU *= VD;
+	SS.VR_ArLU *= VD;
+	SS.VR_ArRL *= VD;
+	SS.VR_ArLL *= VD;
+	SS.VR_LeRU *= VD;
+	SS.VR_LeLU *= VD;
+	SS.VR_LeRL *= VD;
+	SS.VR_LeLL *= VD;
+	SS.VR_HndR *= VD;
+	SS.VR_HndL *= VD;
+	SS.VR_FotR *= VD;
+	SS.VR_FotL *= VD;
+	return SS;
+}
+
+sskelton fSSRChange_Multiple(sskelton SS, float nD){
+	return fSSRChange_Multiple(SS, vec4(nD, nD, nD, 1));
+}
+
+//アタッチ・ホールド
+vec3 fV3Attach(vec3 V3P, vec3 V3S, vec3 V3R, vec3 V3Ratio){
+	return (V3P -V3S) *fM3Rotate(-V3R *V3Ratio);
+}
+vec3 fV3Attach(vec3 V3P, vec3 V3S, vec3 V3R){
+	vec3 V3Ratio =vec3(1);
+	return fV3Attach(V3P, V3S, V3R, V3Ratio);
+}
+
+vec3 fV3Hold(vec3 V3P, vec3 V3S, vec3 V3R, vec3 V3Ratio){
+	return V3P *fM3Rotate(V3R *V3Ratio) +V3S;
+}
+
+vec3 fV3Hold(vec3 V3P, vec3 V3S, vec3 V3R){
+	vec3 V3Ratio =vec3(1);
+	return fV3Hold(V3P, V3S, V3R, V3Ratio);
+}
+
+//計算直後処理
+vec3 fV3Attach_HndR(vec3 V3P){	return fV3Attach(V3P, SS_Default.VP_HndR.xyz, SS_Default.VR_HndR.xyz);}
+vec3 fV3Attach_HndL(vec3 V3P){	return fV3Attach(V3P, SS_Default.VP_HndL.xyz, SS_Default.VR_HndL.xyz);}
+vec3 fV3Attach_FotR(vec3 V3P){	return fV3Attach(V3P, SS_Default.VP_FotR.xyz, SS_Default.VR_FotR.xyz);}
+vec3 fV3Attach_FotL(vec3 V3P){	return fV3Attach(V3P, SS_Default.VP_FotL.xyz, SS_Default.VR_FotL.xyz);}
+
+/*筋肉部（R050503版）*/
+float fNCappedCylinder(vec4 VP, vec4 VA, vec4 VB){
+	float NP, nRadius =VA.w;
+	vec3 V3PA =VP.xyz -VA.xyz, V3BA =VB.xyz -VA.xyz;
+	float nBABA =dot(V3BA, V3BA), nPABA =dot(V3PA, V3BA);
+	float nX =length(V3PA *nBABA -V3BA *nPABA) -nRadius *nBABA;
+	float nY =abs(nPABA -nBABA *0.5) -nBABA *0.5;
+	float nXX =nX *nX, nYY =nY *nY;
+	float nD =(max(nX, nY) <0.0)? -min(nXX, nYY *nBABA):((nX >0.0)? nXX:0.0) +((nY >0.0) ?nYY *nBABA :0.0);
+	NP = sign(nD) *sqrt(abs(nD)) /nBABA;
+	return NP;
+}
+
+float fNCapsule(vec4 VP, vec4 VA, vec4 VB){
+	float nRadius =VA.w;
+	vec3 V3PA =VP.xyz -VA.xyz, V3BA =VB.xyz -VA.xyz;
+	float nA =clamp(dot(V3PA, V3BA) /dot(V3BA, V3BA), 0.0, 1.0);
+	vec3 V3P =V3PA -V3BA *nA;
+	return length(V3P) -nRadius;
+}
+
+float fNMusclePart01(vec4 VP, vec4 VA, vec4 VB){
+	return fNCappedCylinder(VP, VA, VB);
+}
+
+float fNMusclePart02(vec4 VP, vec4 VA, vec4 VB){
+	return fNCapsule(VP, VA, VB);
+}
+
+float fNMuscle_Man01(sskelton SS){
+	vec4 VP =SS.VP, VA, VB;
+	float NP =1e+6;
+	VP.xyz *=fM3Rotate(SS.VR_Cntr.xyz);
+
+	VA =SS.VP_Body, VB =SS.VP_Shld;
+	NP =min(NP, fNMusclePart01(VP, VA, VB));
+	VA =SS.VP_Neck, VB =SS.VP_Head;
+	NP =min(NP, fNMusclePart01(VP, VA, VB));
+	VA =SS.VP_ArRU, VB =SS.VP_ArRL;
+	NP =min(NP, fNMusclePart01(VP, VA, VB));
+	VA =SS.VP_ArRL, VB =SS.VP_HndR;
+	NP =min(NP, fNMusclePart01(VP, VA, VB));
+	VA =SS.VP_ArLU, VB =SS.VP_ArLL;
+	NP =min(NP, fNMusclePart01(VP, VA, VB));
+	VA =SS.VP_ArLL, VB =SS.VP_HndL;
+	NP =min(NP, fNMusclePart01(VP, VA, VB));
+	VA =SS.VP_LeRU, VB =SS.VP_LeRL;
+	NP =min(NP, fNMusclePart01(VP, VA, VB));
+	VA =SS.VP_LeRL, VB =SS.VP_FotR;
+	NP =min(NP, fNMusclePart01(VP, VA, VB));
+	VA =SS.VP_LeLU, VB =SS.VP_LeLL;
+	NP =min(NP, fNMusclePart01(VP, VA, VB));
+	VA =SS.VP_LeLL, VB =SS.VP_FotL;
+	NP =min(NP, fNMusclePart01(VP, VA, VB));
+	return NP;
+}
+
+sskelton fSSPSet_Man01(sskelton SS){
+	SS.VP_Cntr;
+	SS.VP_Body =vec4(0,	0,	0,	1);
+	SS.VP_Shld =vec4(0,	2.5,	0,	0);
+	SS.VP_Neck =vec4(0,	-0.25,	0,	0.5);
+	SS.VP_Head =vec4(0,	1,	0,	0);
+	SS.VP_ArRU =vec4(+1.2,-0.25,	0,	0.3);
+	SS.VP_ArLU =vec4(-1.2,-0.25,	0,	0.3);
+	SS.VP_ArRL =vec4(0,	-1.2,	0,	0.25);
+	SS.VP_ArLL =vec4(0,	-1.2,	0,	0.25);
+	SS.VP_LeRU =vec4(+0.5,0,	0,	0.4);
+	SS.VP_LeLU =vec4(-0.5,0,	0,	0.4);
+	SS.VP_LeRL =vec4(0,	-1.5,	0,	0.35);
+	SS.VP_LeLL =vec4(0,	-1.5,	0,	0.35);
+	SS.VP_HndR =vec4(0,	-1.2,	0,	0);
+	SS.VP_HndL =vec4(0,	-1.2,	0,	0);
+	SS.VP_FotR =vec4(0,	-1.5,	0,	0);
+	SS.VP_FotL =vec4(0,	-1.5,	0,	0);
+	return SS;
+}
+
+sskelton fSSRSet_Random01(sskelton SS){
+	float nD =acos(-1.0) /180.0, nS =sin(SS.VP.w);
+	float nSeed =SS.nMisc00;
+
+	SS.VR_Body =vec4(0,	0,	0,	0)	+vec4(15,	0,	15,	0) *(-1.0 +2.0 *fVN(fNRandom(nSeed *1.0)));
+	SS.VR_Shld =vec4(0,	0,	0,	1)	+vec4(0,	30,	0,	0) *(-1.0 +2.0 *fVN(fNRandom(nSeed *1.1)));
+	SS.VR_Neck =vec4(0,	0,	0,	1)	+vec4(15,	0,	15,	0) *(-1.0 +2.0 *fVN(fNRandom(nSeed *1.2)));
+	SS.VR_Head =vec4(0,	0,	0,	1)	+vec4(15,	15,	0,	0) *(-1.0 +2.0 *fVN(fNRandom(nSeed *1.3)));
+	SS.VR_ArRU =vec4(0,	0,	+60,	1)	+vec4(120,	90,	60,	0) *(-1.0 +2.0 *fVN(fNRandom(nSeed *1.4)));
+	SS.VR_ArLU =vec4(0,	0,	-60,	1)	+vec4(120,	90,	60,	0) *(-1.0 +2.0 *fVN(fNRandom(nSeed *1.5)));
+	SS.VR_ArRL =vec4(+60,	0,	0,	1)	+vec4(60,	0,	0,	0) *(-1.0 +2.0 *fVN(fNRandom(nSeed *1.6)));
+	SS.VR_ArLL =vec4(+60,	0,	0,	1)	+vec4(60,	0,	0,	0) *(-1.0 +2.0 *fVN(fNRandom(nSeed *1.7)));
+	SS.VR_LeRU =vec4(0,	0,	+15,	0)	+vec4(45,	0,	15,	0) *(-1.0 +2.0 *fVN(fNRandom(nSeed *1.8)));
+	SS.VR_LeLU =vec4(0,	0,	-15,	0)	+vec4(45,	0,	15,	0) *(-1.0 +2.0 *fVN(fNRandom(nSeed *1.9)));
+	SS.VR_LeRL =vec4(-30,	0,	0,	1)	+vec4(30,	0,	0,	0) *(-1.0 +2.0 *fVN(fNRandom(nSeed *2.0)));
+	SS.VR_LeLL =vec4(-30,	0,	0,	1)	+vec4(30,	0,	0,	0) *(-1.0 +2.0 *fVN(fNRandom(nSeed *2.0)));
+	SS.VR_HndR =vec4(0,	0,	0,	1);
+	SS.VR_HndL =vec4(0,	0,	0,	1);
+	SS.VR_FotR =vec4(0,	0,	0,	1);
+	SS.VR_FotL =vec4(0,	0,	0,	1);
+
+	SS =fSSRChange_Multiple(SS, nD);
+	return SS;
+}
+
+//小物部（R050429版）
+
+vec4 VP_Ball02;
+float fNObject_Ball02(vec4 VP){
+	float NP =1e+6;
+	vec4 VPi;
+	VPi =VP;
+	if(abs(VPi.y) <1.0){
+		VPi.y =0.0;
+	}else{
+		VPi.y =abs(VP.y) -1.0;
+	}
+	VP_Ball02 =VPi;
+	NP =min(NP,length(VPi.xyz) -0.2);
+
+	VPi =VP;
+	VPi.y =abs(VP.y) -1.4;
+	NP =min(NP,length(VPi.xyz) -0.4);
+
+	return NP;
+}
+
+sface fSFAttachment_HeadPierrot01(vec4 VP){
+	float nE =1.5, nPi;
+	sface SF =fSFSet_Default(), SFi;
+
+	nPi =length(VP.xyz) -1.0 *nE;
+	SFi =fSFSet_Default(nPi);
+	SFi.ID_Pallet =9;
+	
+	{
+		vec4 VP =VP;
+		VP.x =abs(VP.x) -0.35 *nE;
+		VP.y -=0.2;
+
+		if(length(VP.xy) <0.3 *nE)	SFi.ID_Pallet =3;
+		if(length(VP.xy) <0.05 *nE)	SFi.ID_Pallet =6;
+		
+		VP.xy =abs(VP.xy) -0.3 *nE;
+		if(length(VP.xy) >0.3 *nE && SFi.ID_Pallet ==3)	SFi.ID_Pallet =9;
+		if(VP.z >0.0)		SFi.ID_Pallet =9;
+		SF =fSFMin(SF, SFi);
+	}
+
+	{
+		vec4 VP =VP;
+		VP.yz +=vec2(1) /1.41421356 *nE;
+		VP.zy =vec2(+VP.y +VP.z,+VP.y -VP.z) /1.4142;
+		VP.y +=(cos(VP.x *0.75 *sin(VP.w)) -1.0) *nE;
+		if(abs(VP.x) <0.3 *nE){	
+			VP.x =0.0;
+		}else{
+			VP.x =abs(VP.x) -0.3 *nE;
+		}
+		nPi =length(vec2(length(VP.xy) -0.125 *nE, VP.z)) -0.1 *nE;
+		SFi =fSFSet_Default(nPi);
+		SFi.ID_Pallet =2;
+		SF =fSFMin(SF, SFi);
+	}
+
+
+	{
+		vec4 VP =VP;
+		VP.yz +=vec2(0.3, 1.0) *nE;
+		nPi =length(VP.xyz) -0.2 *nE;
+		SFi =fSFSet_Default(nPi);
+		SFi.ID_Pallet =2;
+		SF =fSFMin(SF, SFi);
+	}
+
+
+	{
+		vec4 VP =VP;
+		VP.x =abs(VP.x) -1.0 *nE;
+		nPi =max(length(VP.xy) -0.4 *nE, abs(VP.z) -0.1 *nE);
+		SFi =fSFSet_Default(nPi);
+		SFi.ID_Pallet =9;
+		SF =fSFMin(SF, SFi);
+	}
+
+	{
+		vec4 VP =VP;
+		nPi =max(length(VP.xyz) -1.2 *nE,-VP.y -VP.z -0.2 *nE);
+		SFi =fSFSet_Default(nPi);
+		SFi.ID_Pallet =4;
+		SF =fSFMin(SF, SFi);
+	}
+
+	if(true){
+		vec4 VP =VP;
+		VP.y -=0.7 *nE;
+		
+		nPi =max(length(VP.zx) -1.5 *nE, abs(VP.y) -0.05 *nE);
+		if(VP.y >0.0 && VP.y <1.0 *nE){
+			VP.y =0.0;
+			nPi =min(nPi,length(VP.xyz) -1.0 *nE);
+		}
+		if(VP.y >1.0 *nE){
+			VP.y -=1.0 *nE;
+			nPi =min(nPi,length(VP.xyz) -1.0 *nE);
+		}
+
+		SFi =fSFSet_Default(nPi);
+		SFi.ID_Pallet =5;
+		SF =fSFMin(SF, SFi);
+	}
+
+	return SF;
+}
+
+sface fSFOutfit_Pierrot01(sskelton SS){
+	sface SF =fSFSet_Default(), SFi;
+	float NP =1e+6, nE =1.0;
+	vec4 VP =SS.VP;
+	VP.xyz *=fM3Rotate(SS.VR_Cntr.xyz);
+
+	if(true){
+		vec4 VPi =VP;
+		VPi.xyz =fV3Attach(VPi.xyz, SS.VP_Head.xyz, SS.VR_Head.xyz);
+		
+		SFi =fSFAttachment_HeadPierrot01(VPi);
+		SF =fSFMin(SF, SFi);			
+	}
+
+	if(true){
+		vec3 V3P =fV3Attach(VP.xyz, SS.VP_Body.xyz, SS.VR_Body.xyz);
+		V3P.yz +=vec2(-1.5,+1) *nE;
+		V3P.y =abs(V3P.y) -0.5 *nE;
+		float nPP;
+		nPP =length(V3P) -0.3 *nE;
+		NP =min(NP, nPP);				
+	}
+
+	if(true){
+		vec3 V3P =fV3Attach(VP.xyz, SS.VP_HndR.xyz, SS.VR_HndR.xyz);
+		float nPP;
+		nPP =length(V3P) -0.4 *nE;
+		NP =min(NP, nPP);				
+	}
+
+	if(true){
+		vec3 V3P =fV3Attach(VP.xyz, SS.VP_HndL.xyz, SS.VR_HndL.xyz);
+		float nPP;
+		nPP =length(V3P) -0.4 *nE;
+		NP =min(NP, nPP);				
+	}
+
+	if(true){
+		vec3 V3P =fV3Attach(VP.xyz, SS.VP_FotR.xyz, SS.VR_FotR.xyz);
+		float nPP;
+		if(V3P.z <0.0 && V3P.z >-1.0 *nE)	V3P.z =0.0;
+		if(V3P.z <-1.0 *nE)	V3P.z +=1.0 *nE;
+		nPP =max(length(V3P) -0.4 *nE, -V3P.y -0.2 *nE);
+		NP =min(NP, nPP);
+	}
+
+	if(true){
+		vec3 V3P =fV3Attach(VP.xyz, SS.VP_FotL.xyz, SS.VR_FotL.xyz);
+		float nPP;
+		if(V3P.z <0.0 && V3P.z >-1.0 *nE)	V3P.z =0.0;
+		if(V3P.z <-1.0 *nE)	V3P.z +=1.0 *nE;
+		nPP =max(length(V3P) -0.4 *nE, -V3P.y -0.2 *nE);
+		NP =min(NP, nPP);
+	}
+
+	SFi =fSFSet_Default(NP);
+	SF =fSFMin(SF, SFi);
+
+	return SF;
+}
+
+sface fSFObject_JagglePierrot01(vec4 VP){
+
+	sskelton SS;
+	SS.VP =VP;
+	SS.nMisc00 =floor(VP.w);
+	sskelton SS0 =SS;
+	SS0 =fSSRSet_Random01( SS0);
+
+	SS.nMisc00++;
+	sskelton SS1 =SS;
+	SS1 =fSSRSet_Random01( SS1);
+
+	SS =fSSChange_Inbetween(SS0, SS1, cos(fract(VP.w) *acos(-1.0)));
+	SS.VR_FotR.a =0.0;
+
+	SS.VR_ArRU.xyz *=0.25;
+	SS.VR_ArRU.x +=radians(90.0 +30.0 *cos(VP.w *acos(-1.0) *2.0));
+	SS.VR_ArLU.xyz *=0.25;
+	SS.VR_ArLU.x +=radians(90.0 -30.0 *cos(VP.w *acos(-1.0) *2.0));
+	SS.VR_ArRL.xyz *=0.25;
+	SS.VR_ArRL.x +=radians(30.0 +30.0 *cos(VP.w *acos(-1.0) *2.0));
+	SS.VR_ArLL.xyz *=0.25;
+	SS.VR_ArLL.x +=radians(30.0 -30.0 *cos(VP.w *acos(-1.0) *2.0));
+
+	SS =fSSPSet_Man01( SS);
+	SS.VP_Head.xyz *=2.0;
+	SS =fSSkeltonMake( SS);
+
+	SS.VP.xyz =VP.xyz +SS.VP_FotR.xyz;
+
+	sface SF =fSFSet_Default(fNMuscle_Man01(SS));
+	SF.ID_Pallet =13;
+	vec4 VPi =VP;
+	SF =fSFMin(SF, fSFOutfit_Pierrot01(SS));
+	if(SF.ID_Pallet ==5)	SF.ID_Pallet =13;
+	return SF;
+}
+/*ここまで*/
+
+void fPreprocess(void){	//前処理、負荷軽減用
+}
+
+vec3 fV3Pallet_Color_Default(int ID){
+	vec3 V3C =vec3(1);
+	if(ID ==  1) V3C =vec3(0.75,	0,	0);
+	if(ID ==  2) V3C =vec3(1,	0,	0);
+	if(ID ==  3) V3C =vec3(1,	0.75,	0);
+	if(ID ==  4) V3C =vec3(1,	1,	0);
+	if(ID ==  5) V3C =vec3(0,	1,	0);
+	if(ID ==  6) V3C =vec3(0,	0,	1);
+	if(ID ==  7) V3C =vec3(1,	0,	1);
+	if(ID ==  8) V3C =vec3(0.5);
+	if(ID ==  9) V3C =vec3(1);
+	if(ID == 10) V3C =vec3(0);
+	return V3C;
+}
+
+float fNMap(vec3 V3P){
+	vec4 VP =vec4(V3P, nTime);
+	float NP =1e+6;
+
+	/*所要の図形の表面距離を記述*/
+	sface SF =fSFSet_Default();
+
+	if(true){	//御手玉
+
+		vec4 VPi =VP;
+		vec2 V2P_Mod =mod(VPi.xz, vec2(16)) -vec2(8), V2P_Dom =VPi.xz -V2P_Mod;
+		VPi.w +=V2P_Dom.x *10.3 +V2P_Dom.y *10.1;
+
+		VPi.xz =V2P_Mod;
+
+		sface SFi;
+		float nPi;
+
+		VPi.y -=1.0;
+		SFi =fSFObject_JagglePierrot01(VPi);
+
+		SFi.ID_Object =51;
+		SFi.VMisc00.xz =V2P_Dom;
+		SFi.VP =VPi;
+		SF =fSFMin(SF, SFi);
+
+		const int ciJag =3;
+		for(int I =0; I <ciJag; I++){
+			vec4 VPi =VPi;
+			VPi.w /=float(ciJag);
+			VPi.w +=float(I) /float(ciJag);
+			float nMix =0.5 +cos(VPi.w *acos(-1.0) *2.0) *0.5;
+
+			vec3 V3P0 =SS_Default.VP_HndR.xyz -SS_Default.VP_FotR.xyz;
+			vec3 V3P1 =SS_Default.VP_HndL.xyz -SS_Default.VP_FotR.xyz;
+			vec3 V3P =mix(V3P0, V3P1, nMix);
+			VPi.xyz -=V3P;
+			VPi.y -=sin(nMix *acos(-1.0)) *12.0;
+
+			vec3 V3R0 =SS_Default.VR_HndR.xyz;
+			vec3 V3R1 =SS_Default.VR_HndL.xyz;
+			vec3 V3R =mix(V3R0, V3R1, nMix);
+			VPi.xyz *=fM3Rotate(V3R);
+			VPi.yz *=fM2Rotate(nMix *acos(-1.0) *4.0);
+
+			nPi =fNObject_Ball02(VPi);
+			SFi =fSFSet_Default(nPi);
+			SFi.ID_Object =12;
+			SFi.VP =VPi;
+			SF =fSFMin(SF, SFi);
+
+			aVMisc00[I] =VP_Ball02;
+		}
+	}
+
+	if(true){	/*柱*/
+		vec4 VPi =VP;
+		vec2 V2P_Mod =mod(VPi.xz, 64.0) -32.0, V2P_Dom =VPi.xz -V2P_Mod;
+		VPi.xz =V2P_Mod;
+//		VPi.xz *=fM2Rotate(VPi.y *0.05 +VPi.w *0.1);
+		float nPi;
+//		nPi =length(max(abs(VPi.xz) -2.0, 0.0)) -0.1;
+		nPi =length(VPi.xz) -2.0;
+
+		sface SFi =fSFSet_Default(nPi);
+		SFi.ID_Object =105;
+		SFi.VP =VPi;
+		SFi.VMisc00.xz =V2P_Dom;
+		SF =fSFMin(SF, SFi);
+	}
+
+	if(true){	/*水面*/
+		float nPi =VP.y +(sin(VP.x +sin(VP.z *0.5 +VP.w)) +sin(VP.z +sin(VP.x *0.5 +VP.w))) *0.01;
+		nPi =abs(nPi) -0.5;
+		vec4 VPi =VP;
+
+//		VPi.xz =mod(VPi.xz, 4.0) -2.0;
+//		nPi =max(nPi,-max(abs(VPi.x) -1.2, abs(VPi.z) -1.2));
+
+		sface SFi =fSFSet_Default(nPi);
+		SFi.ID_Object =101;
+		SFi.VP =VP;
+		SF =fSFMin(SF, SFi);
+	}
+
+	NP =min(NP, SF.nDistance);
+	SF_Default =SF;
+	/*ここまで*/
+
+	return NP;
+}
+
+vec4 fVCeilFloor(vec3 V3P){
+	vec4 VP =vec4(V3P /V3P.y, nTime), VColor =vec4(1);
+	/*天井と床面の色彩を記述*/
+
+	{
+		float nC;
+		vec3 V3P =abs(normalize(VP.xyz) *fM3Rotate(vec3(1,10,100) /100.0 *VP.w)) -normalize(vec3(1));
+		nC =1e-4 *pow(length(V3P),-4.0);
+		VColor.rgb =vec3(1) *nC;
+	}
+
+	if(V3P.y <0.0){
+		float nC;
+		vec2 V2P =VP.xz *4.0;
+		V2P -=vec2(0.1,1) *VP.w;
+		nC =sign(sin(V2P.x) *sin(V2P.y)) *0.3 +0.7;
+		VColor.rgb +=vec3(1) *nC *0.75;
+	}else{
+		float nC;
+		for(int I =0; I <3; I++){
+			vec2 V2P =(VP.xz +vec2(0.1,1) *VP.w) *pow(2.0, float(I));
+
+			float nC00, nC10, nC01, nC11;
+			nC00 =fNRandom(floor(V2P +vec2(0,0)));
+			nC10 =fNRandom(floor(V2P +vec2(1,0)));
+			nC01 =fNRandom(floor(V2P +vec2(0,1)));
+			nC11 =fNRandom(floor(V2P +vec2(1,1)));
+
+			float nC0, nC1;
+			nC0 =mix(nC00, nC01, fract(V2P.y));
+			nC1 =mix(nC10, nC11, fract(V2P.y));
+			nC +=mix(nC0, nC1, fract(V2P.x)) /float(I +1);
+		}
+		VColor.rgb +=nC *0.75;
+		VColor.rb +=0.25 +vec2(1,-1) *0.25 *sin(VP.w *0.1);
+	}
+
+	VColor.rgb +=length(VP.xz) *2e-2;
+
+	/*ここまで*/
+	return VColor;
+}
+
+vec4 fVBack(vec2 V2UV){
+	vec4 VP =vec4(V2UV, 0, nTime), VColor;
+	/*背景の色彩を記述*/
+	VColor =vec4(0.5);
+	if(false){	/*おどろおどろ*/
+		vec4 VPi =VP;
+		vec2 V2P =VPi.xy *4.0;
+		for(int I =0; I <3; I++){
+			V2P +=sin(V2P.yx *2.0 +VPi.w *float(I +1)) /float(I +1);
+		}
+		VColor.rgb =sin(vec3(0,1,2) /3.0 +acos(-1.0) *2.0 +V2P.x) *0.2 +0.8;
+	}
+
+	/*ここまで*/
+	return VColor;
+}
+
+vec4 fVFront(vec2 V2UV, vec4 VColor){
+	vec4 VP =vec4(V2UV, 0, nTime);
+
+	VP.y -=0.75;
+	VP.xyz *=16.0;
+	int iSQ =fISequencer(50,5);
+	float nC =fNLetters00(VP);
+
+	if(nC <0.0){
+		VColor.rgb +=(sin(vec3(0,1,2) /3.0 *acos(-1.0) *2.0 +VP.w) *0.3 +0.7) *clamp(1.0 +2.0 *nC, 0.0, 1.0)* (sin(VP.w) *0.5 +0.5);
+	}
+
+	return VColor;
+}
+
+sface fSFEffect_Before(sface SF, smarch SM){
+	if(!SM.bTouch)	return SF;
+	vec4 VColor =SF.VColor;
+	vec3 V3RRR =SF.V3Real_Reflect_Refract;
+	vec4 VP =vec4(SM.V3P, nTime);
+	vec3 V3NL =SM.V3NormalLine;
+
+	/*オブジェクト・パレットごとの色彩効果を記述*/
+
+	if(SF.ID_Pallet !=0){	/*基本*/
+		VColor.rgb =fV3Pallet_Color_Default(SF.ID_Pallet);
+	}
+
+	if(SF.ID_Pallet ==13){
+		VColor.rgb =sin(vec3(0,1,2) /3.0 *acos(-1.0) *2.0 +SF.VMisc00.x +SF.VMisc00.y *2.0 +SF.VMisc00.z *3.0) *0.3 +0.4;
+		V3RRR =vec3(1,1,2);
+	}
+
+	if(SF.ID_Object ==101){
+		VColor.rgb =sign(sin(VP.x *0.25) *sin(VP.z *0.25)) *0.2 +vec3(0.8);
+		V3RRR =vec3(1,2,3);
+	}
+
+	/*ここまで*/
+	SF.VColor =VColor;
+	SF.V3Real_Reflect_Refract =V3RRR;
+	return SF;
+}
+
+sface fSFEffect_After(sface SF, smarch SM){
+	if(!SM.bTouch)	return SF;
+	vec4 VColor =SF.VColor;
+	vec4 VP =vec4(SM.V3P, nTime);
+	vec3 V3NL =SM.V3NormalLine;
+
+	/*オブジェクト・パレットごとの色彩効果を記述*/
+	if(false){	/*点格子*/
+		vec4 VPi =VP;
+		VPi.xyz =mod(VPi.xyz, 1.0) -0.5;
+		float nL =length(VPi.xyz);
+		VColor.rgb +=(sin((vec3(0,1,2) /3.0 -VPi.w) *acos(-1.0) *2.0) *0.5 +0.5) *pow(nL, -2.0) *1e-2;
+	}
+
+	if(false){	/*線格子*/
+		vec4 VPi =VP;
+		VPi.xyz =mod(VPi.xyz, 4.0) -2.0;
+		float nL =min(min(abs(VPi.x), abs(VPi.y)), abs(VPi.z));
+		vec3 V3C =(sin((vec3(0,1,2) /3.0 -VPi.w) *acos(-1.0) *2.0) *0.5 +0.5) *pow(nL, -2.0) *1e-3;
+		V3C =clamp(V3C, 0.0, 1.0);
+		VColor.rgb +=V3C;
+	}
+
+	/*ここまで*/
+	SF.VColor =VColor;
+	return SF;
+}
+
+vec3 fV3NormalLine(vec3 V3P){
+	float nNL =fNMap(V3P);
+	float nD =1.0 /2560.0;
+	vec3 V3NL =vec3(nNL);
+	V3NL.x -=fNMap(V3P -vec3(nD,0,0));
+	V3NL.y -=fNMap(V3P -vec3(0,nD,0));
+	V3NL.z -=fNMap(V3P -vec3(0,0,nD));
+	V3NL =normalize(V3NL);
+	return V3NL;
+}
+
+smarch fSMRayMarch(vec3 V3P_Start, vec3 V3Direction, float nLength, int iDefinition_Limit){
+	V3Direction =normalize(V3Direction);
+	vec3 V3P;
+	float nDistance_Min =1e+6, nAdjust =cnMarchStepAdjust, nDistanceLimit =cnMarchStepLimit;
+	bool bTouch;
+	int iLoop;
+	nLength +=0.02;
+	for(int I =0; I <ciDefinition; I++){
+		V3P =V3P_Start +V3Direction *nLength;
+		float nDistance =fNMap(V3P);
+		nDistance =min(abs(nDistance) *nAdjust, nDistanceLimit);
+		if(nDistance <0.01){
+			bTouch =true;
+			break;
+		}
+		if(I >iDefinition_Limit)	break;
+		nLength +=nDistance;
+		nDistance_Min =min(nDistance_Min, nDistance);
+		iLoop++;
+	}
+	smarch SM;
+	SM.V3Direction =V3Direction;
+	SM.V3P_Start =V3P_Start;
+	SM.V3P =V3P;
+	SM.nLength =nLength;
+	SM.nDistance_Min =nDistance_Min;
+	SM.bTouch =bTouch;
+	SM.iLoop =iLoop;
+	SM.nLoop =float(iLoop) /float(ciDefinition);
+	SM.V3NormalLine =fV3NormalLine(V3P);
+	return SM;
+}
+
+sface fSFEffect(sface SF, smarch SM, bvec3 bV3RRR){
+	vec3 V3P_Light =vec3(1,1,-1) *32.0;
+
+	if(true ||(bV3RRR.y || bV3RRR.z)){	/*縁取シェーディング*/
+		SF.VColor.rgb *=1.0 -SM.nLoop;
+	}
+
+	if(false && (bV3RRR.x)){	/*光源シェーディング１*/
+		SF.VColor.rgb *=dot(SM.V3NormalLine, normalize(V3P_Light))*0.6 +0.4;
+	}
+
+	if(false && (bV3RRR.x)){	//影１
+		if(SM.bTouch){
+			float nShadow;
+			smarch SM_Shadow =fSMRayMarch(SM.V3P, normalize(V3P_Light), 1.0, ciDefinition /4);
+			nShadow =1.0 -clamp(SM_Shadow.nDistance_Min, 0.0, 1.0);
+			if(SM_Shadow.bTouch)	nShadow =1.0;
+			SF.VColor.rgb -=nShadow *0.25;
+		}
+	}
+
+	if(true){	//ボール
+		vec3 V3C =vec3(1,0,0);
+		for(int I =0; I <3; I++){
+			vec4 VP =aVMisc00[I];
+			SF.VColor.rgb +=(V3C -3e-2) /dot(VP.xyz,VP.xyz) *0.2;
+			V3C.xyz =V3C.yzx;
+		}
+	}
+
+	return SF;
+}
+
+void fCameraSet(inout vec3 V3P, inout vec3 V3D){
+	V3P.xy +=VMouse.xy *vec2(+1,-1) *16.0 +vec2(0,8);
+	V3P.zy *=fM2Rotate(+VMouse.y);
+	V3P.zx *=fM2Rotate(-VMouse.x *8.0);
+
+	V3P.zx +=vec2(4,1) *nTime;
+
+	V3D.zy *=fM2Rotate(+VMouse.y);
+	V3D.zx *=fM2Rotate(-VMouse.x *8.0);
+}
+
+vec4 fVMain(vec2 V2UV){
+	if(cbSetting_Preprocess)	fPreprocess();
+
+	vec3 V3Camera =VP_DefaultCamera.xyz, V3Direction =normalize(vec3(V2UV, 1));
+	fCameraSet(V3Camera, V3Direction);
+
+	SF_Default =fSFSet_Default();
+	sface SF1st, SF2nd_Reflect, SF2nd_Refract;
+	SF1st =SF2nd_Reflect =SF2nd_Refract =SF_Default;
+
+	bool bTouch1st, bTouch2nd_Reflect, bTouch2nd_Refract;
+	smarch SM1st, SM2nd_Reflect, SM2nd_Refract;
+
+	{
+		smarch SM =fSMRayMarch(V3Camera, V3Direction, 0.0, ciDefinition);
+
+		if(SM.bTouch){
+			SF1st =SF_Default;
+			if(cbSetting_Effect_Before1st)			SF1st =fSFEffect_Before(SF1st, SM);
+			if(cbSetting_Effect1st)	SF1st =fSFEffect(SF1st, SM, bvec3(true,false,false));
+		}
+		SM1st =SM2nd_Reflect =SM2nd_Refract =SM;
+	}
+
+	SF2nd_Reflect =SF2nd_Refract =SF1st;
+
+	if(cbSetting_March2nd_Reflect){
+		SM2nd_Reflect.V3Direction =reflect(SM2nd_Reflect.V3Direction, SM2nd_Reflect.V3NormalLine);
+		smarch SM =fSMRayMarch(SM2nd_Reflect.V3P, SM2nd_Reflect.V3Direction, 0.0, ciDefinition /2);
+		if(SM.bTouch){
+			SF2nd_Reflect =SF_Default;
+			if(cbSetting_Effect_Before2nd_Reflect)	SF2nd_Reflect =fSFEffect_Before(SF2nd_Reflect, SM);
+			if(cbSetting_Effect2nd_Reflect)	SF2nd_Reflect =fSFEffect(SF2nd_Reflect, SM, bvec3(false,true,false));
+		}
+		SM2nd_Reflect =SM;
+	}
+
+	if(cbSetting_March2nd_Refract){
+		if(cbSetting_Refrax)	SM2nd_Refract.V3Direction =refract( SM2nd_Refract.V3Direction,+SM2nd_Refract.V3NormalLine, SF2nd_Refract.nRefrax);
+		smarch SM =fSMRayMarch(SM2nd_Refract.V3P, SM2nd_Refract.V3Direction, 0.1, ciDefinition);
+		if(SM.bTouch){
+			{
+				smarch SM2nd_RefractPlus =SM;
+				if(cbSetting_Refrax)	SM2nd_RefractPlus.V3Direction =refract( SM2nd_RefractPlus.V3Direction,-SM2nd_RefractPlus.V3NormalLine, 1.0 /SF2nd_Refract.nRefrax);
+				SM2nd_RefractPlus =fSMRayMarch(SM2nd_RefractPlus.V3P, SM2nd_RefractPlus.V3Direction, 0.1, ciDefinition);
+				if(SM2nd_RefractPlus.bTouch)	SM =SM2nd_RefractPlus;
+			}
+			SF2nd_Refract =SF_Default;
+			if(cbSetting_Effect_Before2nd_Refract)	SF2nd_Refract =fSFEffect_Before(SF2nd_Refract, SM);
+			if(cbSetting_Effect2nd_Refract)	SF2nd_Refract =fSFEffect(SF2nd_Refract, SM, bvec3(false,false,true));
+		}
+		SM2nd_Refract =SM;
+	}
+
+	vec3 V3RRR =SF1st.V3Real_Reflect_Refract;
+	V3RRR /=abs(V3RRR.x) +abs(V3RRR.y) +abs(V3RRR.z);
+
+	if(cbSetting_Effect_After1st)			SF1st =fSFEffect_After(SF1st, SM1st);
+	if(cbSetting_Effect_After2nd_Reflect)	SF2nd_Reflect =fSFEffect_After(SF2nd_Reflect, SM2nd_Reflect);
+	if(cbSetting_Effect_After2nd_Refract)	SF2nd_Refract =fSFEffect_After(SF2nd_Refract, SM2nd_Refract);
+
+	vec4 VColor =SF1st.VColor *V3RRR.x +SF2nd_Reflect.VColor *V3RRR.y +SF2nd_Refract.VColor *V3RRR.z;
+
+	if(cbSetting_CeilFloor){
+
+		if(!SM1st.bTouch){
+			VColor =fVCeilFloor(SM1st.V3Direction);
+		}else{
+			vec4 VC, VC_Reflect, VC_Refract;
+			vec3 V3D_Reflect, V3D_Refract;
+
+			if(SM2nd_Reflect.bTouch){
+				V3D_Reflect =reflect(SM2nd_Reflect.V3Direction, SM2nd_Reflect.V3NormalLine);
+			}else{
+				V3D_Reflect =reflect(SM1st.V3Direction, SM1st.V3NormalLine);
+			}
+
+			if(SM2nd_Refract.bTouch){
+				V3D_Refract =refract(SM2nd_Refract.V3Direction,+SM2nd_Refract.V3NormalLine, SF2nd_Refract.nRefrax);
+			}else{
+				V3D_Refract =refract(SM1st.V3Direction,+SM1st.V3NormalLine, SF1st.nRefrax);
+			}
+
+			VC_Reflect =fVCeilFloor(V3D_Reflect);
+			VC_Refract =fVCeilFloor(V3D_Refract);
+
+			VC =VC_Reflect *V3RRR.y +VC_Refract *V3RRR.z;
+			VColor +=VC *cnSetting_CeilFloor;
+		}
+	}
+
+
+	if(cbSetting_Back && !SM1st.bTouch)	VColor =fVBack(V2UV);
+	if(cbSetting_Front)	VColor =fVFront(V2UV, VColor);
+
+	VColor.a =1.0;
+	return VColor;
+}
+
+void main(void){
+	vec2 V2UV =(gl_FragCoord.xy *2.0 -resolution.xy) /min(resolution.x, resolution.y);
+	gl_FragColor =fVMain(V2UV);
+}

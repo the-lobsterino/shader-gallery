@@ -1,0 +1,83 @@
+// Digitized
+// By: Brandon Fogerty
+// bfogerty@gmail.com
+
+#ifdef GL_ES
+precision mediump float;
+#endif
+
+uniform float time;
+uniform vec2 mouse;
+uniform vec2 resolution;
+
+float random( vec2 p )
+{	
+	return fract( sin( fract( sin( p.x ) ) + p.y) * 42.17563);
+}
+
+float worley( vec2 p, float timeSpeed )
+{
+	float d = 10.0;
+	for( int xo = -1; xo <= 1; xo++ )
+	{
+		for( int yo = -1; yo <= 1; yo++ )
+		{
+			vec2 test_cell = floor(p) + vec2( xo, yo );
+			
+			float f1 = random( test_cell );
+			float f2 = random( test_cell + vec2(1.0,83.0) );
+			
+			float xp = mix( f1, f2, sin(time*timeSpeed) );
+			float yp = mix( f1, f2, cos(time*timeSpeed) );
+			
+			vec2 c = test_cell + vec2(xp,yp);
+			
+			vec2 cTop = p - c;
+			d = min( d, dot(cTop,cTop) );
+		}
+	}
+	return d;
+}
+
+float worley2( vec2 p )
+{
+	float d = 10.0;
+	for( int xo = -1; xo <= 1; xo++ )
+	{
+		for( int yo = -1; yo <= 1; yo++ )
+		{
+			vec2 test_cell = floor(p) + vec2( xo, yo );
+			
+			vec2 c = test_cell;
+			
+			vec2 cTop = p - c;
+			d = min( d, dot(cTop,cTop) );
+		}
+	}
+	return d;
+}
+
+float pass( vec2 uv, float timeSpeed )
+{
+	float t = worley( gl_FragCoord.xy / 15.0, timeSpeed );
+	t = pow(t, 4.0 );
+	
+	return t;
+}
+
+void main( void ) 
+{
+	vec2 uv = (gl_FragCoord.xy / resolution.xy) * 2.0 - 1.0;
+
+	float t = worley2( gl_FragCoord.xy / 0.6 );
+	vec3 finalColor = vec3( t,0,t) * 1.1;
+	
+	t = pass( uv, 1.0 );
+	finalColor += vec3( t, t, sqrt(t * 4.0) );
+
+	
+	finalColor *= smoothstep(1.0, 0.0, length(uv.y) * 2.5 );
+	
+	gl_FragColor = vec4( finalColor, 1.0 );
+
+}

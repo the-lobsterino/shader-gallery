@@ -1,0 +1,1 @@
+for(float F,L,O,W;F++<96.;o+=.02/exp(3e2*L*FC.ptqs)){vec3 E,R=vec3((FC.rg/r-.5)*W,W-6.)*rotate3D(t,++E);O=2.;R.g*=.7;R*=L=9./dot(R,R);O*=L;R.sp*=rotate2D(R.t*.5+t/F4);for(int E;E++<6;R.xz*=rotate2D(.5))R.p=abs(R.b);W+=L=abs(cos(R.t+t*9.))*sin(R.s*R.b/1e2)*6./O+.5/O;}

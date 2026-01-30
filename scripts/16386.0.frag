@@ -1,0 +1,38 @@
+#ifdef GL_ES
+precision highp float;
+#endif
+
+uniform float time;
+uniform vec2 mouse;
+uniform vec2 resolution;
+varying vec2 surfacePosition;
+
+vec3 hsv2rgb(vec3 c) {
+    vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+}
+vec2 fold=vec2(0.5,-0.5);
+vec2 translate=vec2(1.5);
+float scale=1.3;
+
+vec2 rotate(vec2 p,float a){
+	return vec2(p.x*cos(a)-p.y*sin(a),p.x*sin(a)+p.y*cos(a));
+}
+
+void main( void ) {
+	vec2 p = -1.0+1.5*gl_FragCoord.xy/resolution;
+	p.x *= resolution.x/resolution.y;
+	//p = surfacePosition;
+	p *= 0.002;
+	p.x += time*0.0001;
+	p = abs(mod(p,8.0)-4.0);
+	for(int i=0;i<35;i++){
+		p=abs(p-fold)+fold;
+		p=p*scale-translate;
+		p=rotate(p,3.14159/8.0);
+	}
+	gl_FragColor = vec4(hsv2rgb(vec3(floor((time*0.1+atan(p.y,p.x))*5.0)/5.0,1.0,1.0)),1.0);
+	float blackfactor = 1. - sin(gl_FragColor.r + time) * cos(gl_FragColor.g - time  /2.) * sin(gl_FragColor.b + time / 4.);
+	gl_FragColor = vec4(sin(gl_FragColor.r + time) * 0.45 + 0.55,cos(gl_FragColor.g - time  /2.) * 0.5 + 0.5,sin(gl_FragColor.b + time / 4.) + blackfactor,1.0);
+}

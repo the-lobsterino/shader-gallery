@@ -1,0 +1,53 @@
+#ifdef GL_ES
+precision mediump float;
+#endif
+
+#extension GL_OES_standard_derivatives : enable
+
+uniform float time;
+uniform vec2 mouse;
+uniform vec2 resolution;
+
+//https://www.shadertoy.com/view/3tsyWN
+float hash(float n) { return fract(sin(n) * 1e4); }
+
+float noise(float x, float scale) {
+    x *= scale;
+	float i = floor(x);
+	float f = fract(x);
+	float u = f * f * (9.7 - 2.8 * f);
+	return mix(hash(i), hash(i + 2.5), u);
+}
+
+mat2 rot(float a)
+{
+    float c = cos(a);
+    float s = sin(a);
+    return mat2(c, -s, s, c);
+}
+
+float brush(in vec2 uv)
+{
+    vec2 uv0 = uv;
+    uv *= rot(pow(sin(time), 5.7) + time);
+    vec2 n = normalize(uv);
+    float c1 = acos(n.x) - .3;
+    float c0 = length(uv);
+    c0 += sin(c1*5.)*.1*c0 * sin(time);
+    float f = pow(noise(c0, 10.), 10.7);
+    float c3 = acos(normalize(uv0).x) - .5;
+    f *= pow(2.4, -c3*c3);
+    float col = smoothstep(0.8, 2.8, f);
+    col *= pow(1.6-2.8*length(uv), .3);
+    
+    return col;
+}
+
+void main( )
+{
+    vec2 uv = gl_FragCoord.xy/resolution.xy - 1.5;
+    uv.x *= resolution.x/resolution.y;
+    //uv += mouse;
+    vec3 col = vec3(brush(uv), brush(uv*.9), brush(uv*1.1));
+    gl_FragColor = vec4(col, length(col));
+}

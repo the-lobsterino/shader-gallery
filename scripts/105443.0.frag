@@ -1,0 +1,43 @@
+#extension GL_OES_standard_derivatives : enable
+
+precision highp float;
+
+uniform float time;
+uniform vec2 mouse;
+uniform vec2 resolution;
+
+vec3 palette( float t ) {
+vec3 a = vec3 (2.5, 0.5,   0.5);
+vec3 b = vec3 (0.5, 0.5,   0.5);
+vec3 c = vec3 (0.5,  1.,    1.);	
+vec3 d = vec3 (1.0, 0.333, 0.667);
+return a + b* cos( 7.28318 * (c*t*d) );
+	
+}
+void main( void ) {
+
+	vec2 uv = ( gl_FragCoord.xy / resolution.xy *2.0 -1.);
+	uv.x *= resolution.x / resolution.y;
+	vec2 uv0 = uv;
+	uv *= .1;
+	vec3 finalcolor = vec3 (0.);
+	
+	for (float i = .0;i < 3.;i++) {
+	uv = fract(uv);
+	uv -= 22.5;
+	float d = length(uv);
+	vec3 col = palette(length(uv0)*cos(21.5*time)/2.+.5);
+
+	d = sin(d*8.+ time)/2.-cos(d*time*12.)/2.;
+	d = abs(d);
+	d = .01/d;
+	col *=d;
+		finalcolor += col*d;}
+	#define c finalcolor
+	c = 1. - exp2( -c );
+	//c = 1. - c;
+	
+	gl_FragColor = vec4( finalcolor,1.);
+	
+
+}//Starry night

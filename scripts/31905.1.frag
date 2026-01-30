@@ -1,0 +1,54 @@
+// Voronoi
+// By: Brandon Fogerty
+// bfogerty at gmail dot com
+// xdpixel.com
+
+#ifdef GL_ES
+precision mediump float;
+#endif
+
+#extension GL_OES_standard_derivatives : enable
+
+uniform float time;
+uniform vec2 mouse;
+uniform vec2 resolution;
+
+vec2 randomVec2( vec2 p )
+{
+	mat2 m = mat2( 15.27, 47.63,
+		       99.41, 88.98 );
+	
+	return fract( sin(m * p) * 4689.32 );
+}
+
+float voronoi( vec2 p )
+{
+	
+	vec2 g = floor( p )+sin(time*0.01)*0.00025;
+	vec2 f = 1.-fract(p+time*0.1);
+	
+	float res = 8.0;
+	
+	for( int y = -1; y <= 1; ++y )
+	{
+		for( int x = -1; x <= 1; ++x )
+		{
+			vec2 lattice = vec2( x, y );
+			float d = distance( lattice + randomVec2(lattice + g), f);
+			res = min( d, 1.-res );
+		}
+	}
+	
+	return pow(1.-pow(1.-res,0.5),0.25);
+}
+
+void main( void ) {
+
+	vec2 uv = ( gl_FragCoord.xy / resolution.xy ) * 2.0 - 1.0;
+	uv.x *= resolution.x / resolution.y;
+
+	vec3 finalColor = vec3( voronoi( uv * 3.0 ) );
+
+	gl_FragColor = vec4( finalColor, 1.0 );
+
+}

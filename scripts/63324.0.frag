@@ -1,0 +1,2 @@
+#define s e.xy*=mat2(9,-3,7,4)*.1,e=sin(e.xzy*2.)+.5
+precision lowp float;uniform vec2 resolution;uniform float time;void main(){vec3 p,e,d=p=vec3(gl_FragCoord.xy/resolution,1);p.z=time;for(int i=0;i<40;i++)e=p,s,s,s,p+=(e.z-.5)*d;gl_FragColor=vec4(cos(e.xyx-d),1);}

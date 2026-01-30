@@ -1,0 +1,1 @@
+precision highp float;void main(){vec2 a=gl_FragCoord.xy/20.;ivec2 b=ivec2(a);a-=vec2(b)+.5;if(b.x>2||b.y>2)discard;if(a.x>.4||a.y>.4)gl_FragColor=vec4(.5,.5,.5,1.);else if(length(a+.05)<.4&&(b.x+b.y-3)*b.y==0)gl_FragColor=vec4(0.,0.,0.,1.);else gl_FragColor=vec4(1.,1.,1.,1.);}

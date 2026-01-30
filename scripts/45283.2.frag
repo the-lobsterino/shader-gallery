@@ -1,0 +1,87 @@
+#ifdef GL_ES
+precision mediump float;
+#endif
+
+#extension GL_OES_standard_derivatives : enable
+
+uniform float time;
+uniform vec2 mouse;
+uniform vec2 resolution;
+
+
+//matrix deformation
+const mat2 m = mat2( 0.8, 0.6, -0.6, 0.8);
+
+float rand( in vec2 n )
+{ 
+	
+	return fract( 1e4 * sin(17.0 * n.x + n.y * 0.1) *
+		     (0.1 + abs(sin(n.y * 13.0 + n.x))) );
+	
+}
+
+float noise( vec2 p ) 
+{
+    vec2 i = floor( p );
+    vec2 f = fract( p );
+
+    // Four corners in 2D of a tile
+    float a = rand( i );
+    float b = rand( i + vec2(1.0, 0.0) );
+    float c = rand( i + vec2(0.0, 1.0) );
+    float d = rand( i + vec2(1.0, 1.0) );
+
+    vec2 u = f * f * ( 3.0 - 2.0 * f );
+    return mix( a, b, u.x ) + ( c - a ) * u.y *
+	      ( 1.0 - u.x ) + ( d - b ) * u.x * u.y;
+}
+
+float fbm( vec2 p )
+{
+	
+	float f = 0.0;
+	f += 0.5000 * noise( p ); p = m * p * 2.02;
+	f += 0.2500 * noise( p ); p = m * p * 2.03;
+	f += 0.1250 * noise( p ); p = m * p * 2.01;
+	f += 0.0625 * noise( p ); p = m * p * 2.04;
+	f /= 0.9375;
+	
+	return f;
+	
+}
+
+float pattern( in vec2 p, out vec2 q, out vec2 r )
+{
+	
+	//vec2 q = vec2( fbm( p + vec2(0.0, 0.0) + 2.0 * time*.19 ),
+	//	       fbm( p + vec2(5.2, 1.3) + -2.0 * sin(time*.2) ) );
+	
+	q.x = fbm( p + vec2(0.0, 0.0) + 2.0 * time*.19 );
+	q.y = fbm( p + vec2( 5.2, 1.3) + 2.0 * time*.17 );
+	
+	//vec2 r = vec2( fbm( p + 4.0*q + vec2(1.7, 9.2) + sin(time*.16) ),
+	//	       fbm( p + 4.0*q + vec2(8.3, 2.8) + -1.*cos(time*.15) ) );
+	
+	r.x = fbm( p + 4.0*q + vec2(1.7, 9.2) + 2.0 + 2.0 * sin(time*.10) );
+	r.y = fbm( p + 4.0*q + vec2(8.3, 2.8) + 1.0 + 2.0 * cos(time*.11));
+	
+	return fbm( p + 4.0*r );
+	
+}
+
+void main( void )
+{
+
+	vec2 p = ( gl_FragCoord.xy / resolution.xy );// + mouse / 4.0;
+	p.x *= resolution.x/resolution.y;
+	vec2 qo; vec2 ro;
+	float f = pattern( 8.*p, qo, ro );
+	
+	vec3 col = vec3( 0.0 );
+	col = mix( vec3(0.5, 0.3, 0.3), vec3(0.8, 0.6, 0.4), f );
+	col = mix( col, vec3(0.9, 0.9, 0.9), dot(qo, qo) );
+	col = mix( col, vec3(0.05, 0.1, 0.3), ro.x * ro.y );
+	
+	gl_FragColor = vec4( col, 1.0 );
+	
+}

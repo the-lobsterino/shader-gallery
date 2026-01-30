@@ -1,0 +1,87 @@
+#ifdef GL_ES
+precision mediump float;
+#endif
+
+#define RAY_MARCHING_ITERATINOS 64
+
+uniform float time;
+uniform vec2 mouse;
+uniform vec2 resolution;
+
+float sphere(vec3 p, float r) {
+	return length(p) - r;
+}
+
+float box(vec3 p, vec3 b)
+{
+	vec3 d = abs(p) - b;
+	return min(max(d.x, max(d.y, d.z)), 0.0) + length(max(d, 0.0));
+}
+
+float torus(vec3 p, vec2 t)
+{
+	vec2 q = vec2(length(p.xz) - t.x, p.y);
+  	return length(q) - t.y;
+}
+
+float union_(float d1, float d2) {
+	return min(d1, d2);
+}
+
+float intersect(float d1, float d2) {
+	return max(-d1, d2);
+}
+
+float distance_field(vec3 p) {
+	p.x = mod(p.x + 1.0, 2.0) - 1.0;
+	p.y = mod(p.y + 1.0, 2.0) - 1.0;
+	p.z = mod(p.z + 1.0, 2.0) - 1.0;
+	return union_(intersect(sphere(p, 0.69), box(p, vec3(0.5, 0.5, 0.5))), torus(p, vec2(0.5, 0.1)));
+}
+
+vec3 normal(vec3 p) {
+	float eps = 1e-2;
+	float d = distance_field(p);
+	vec3 n;
+	vec3 ex = vec3(eps, 0.0, 0.0);
+	vec3 ey = vec3(0.0, eps, 0.0);
+	vec3 ez = vec3(0.0, 0.0, eps);
+	n.x = distance_field(p + ex) - d;
+	n.y = distance_field(p + ey) - d;
+	n.z = distance_field(p + ez) - d;
+	return normalize(n);
+}
+
+mat3 make_y_rot(float angle) {
+	float c = cos(angle);
+	float s = sin(angle);
+	return mat3(c, 0.0, s, 0.0, 1.0, 0.0, -s, 0.0, c);
+}
+
+mat3 make_x_rot(float angle) {
+	float c = cos(angle);
+	float s = sin(angle);
+	return mat3(1.0, 0.0, 0.0, 0.0, c, s, 0.0, -s, c);
+}
+
+void main( void ) {
+	vec2 position = ( gl_FragCoord.xy / resolution.xy ) - vec2(0.5, 0.5);
+	position.x *= resolution.x/resolution.y;
+	
+	vec3 origin = vec3(0.0, 0.0, time*0.001);
+	vec3 ray = normalize(vec3(position, 1.0));
+	
+	mat3 trans = make_y_rot(time*0.2)*make_x_rot(time*0.4);
+	
+	float t = 0.0;
+	vec3 p;
+	for (int i = 0; i < RAY_MARCHING_ITERATINOS; ++i) {
+		p = origin + t*ray;
+		p = trans*p;
+		float distance = distance_field(p);
+		if (distance < 1e-3) break;
+		t += distance;
+	}
+	
+	float c = -dot(normal(p), trans*vec3(0.0, -0.5, 0.5))/t;
+}

@@ -1,0 +1,74 @@
+
+//---------------------------------------------------------
+// Shader:   SuperNovaeFusion.glsl            by   I.G.P
+// original: https://www.shadertoy.com/view/4tfGRr
+// use mouse to rotate and look around
+//---------------------------------------------------------
+#ifdef GL_ES
+  precision highp float;
+#endif
+
+uniform float time;
+uniform vec2 mouse;
+uniform vec2 resolution;
+varying vec2 surfacePosition;
+
+//---------------------------------------------------------
+vec2 cmul(vec2 a, vec2 b) { 
+    return vec2( a.x*b.x - a.y*b.y, a.x*b.y + a.y*b.x );
+}
+
+vec3 dmul(vec3 a, vec3 b) {
+    float r = length(a);   
+    b.xy = cmul(normalize(a.xy), b.xy);
+    b.yz = cmul(normalize(a.yz), b.yz);
+    b.xz += 0.3 * cmul(normalize(a.xz), b.xz);
+    return r*b;
+}
+
+float field(in vec3 p) {
+    float res = 0.0;
+    vec3 c = p;
+    for (int i = 0; i < 9; ++i) {
+        p = abs(p) / dot(p,p) - 1.0;
+        p = dmul(p,p) + 0.7;
+        res += exp(-6.0 * abs(dot(p,c)-0.15));
+    }
+    return max(0.0, res / 3.0);
+}
+
+vec3 raycast(in vec3 ro, vec3 rd) {
+    float t = 1.5;
+    float dt = 0.25;
+    vec3 col = vec3(0.0);
+    for(int i=0; i<7; i++) {
+        float c = field(ro+t*rd);               
+        t+=dt / (0.35+c*c);
+        c = max(5.0 * c - .9, 0.0);
+        c = c*c*c*c;
+        col = 0.04*col + 0.04*vec3(1e-6*c*c*c, 0.2*c, 0.1*c*c);
+    }
+    return col;
+}
+
+void main(void) {
+    vec2 q = gl_FragCoord.xy / resolution.xy;
+    vec2 p = -1.0 + 2.0 * q;
+    p += surfacePosition;
+
+    // camera
+    float angle = .05*time + 2.*3.14;
+    vec3 ro = vec3(3.2*cos(angle)-1., 0, 3.2*sin(angle));
+    vec3 ta = vec3(0, 1.2 , 0);
+    vec3 ww = normalize (ta - ro);
+    vec3 uu = normalize (cross (ww, vec3(0.0, 1.0, 0.0)));
+    vec3 vv = normalize (cross (uu, ww));
+    vec3 rd = normalize (p.x*uu + p.y*vv + 2.0*ww);
+    
+    // raymarch
+    vec3 col = raycast(ro, rd);
+    
+    // shade
+    col =  0.3 *(log(1.0+0.2*col));
+    gl_FragColor = vec4(sqrt(col), 1.0);
+}

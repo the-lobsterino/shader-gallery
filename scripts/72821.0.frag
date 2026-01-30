@@ -1,0 +1,170 @@
+/*
+ * Original shader from: https://www.shadertoy.com/view/7sjXDR
+ */
+
+#ifdef GL_ES
+precision mediump float;
+#endif
+
+// glslsandbox uniforms
+uniform float time;
+uniform vec2 resolution;
+
+// shadertoy emulation
+#define iTime time
+#define iResolution resolution
+
+// --------[ Original ShaderToy begins here ]---------- //
+//////////////////////////////////////////////////////////////////////////////////
+// Infinite Yin Yang Zoom - Copyright 2017 Frank Force
+// License Creative Commons Attribution-NonCommercial-ShareAlike 3.0 Unported License.
+//////////////////////////////////////////////////////////////////////////////////
+
+const float zoomSpeed			= -0.4;	// how fast to zoom (negative to zoom out)
+const float zoomScale			= 0.08;	// how much to multiply overall zoom (closer to zero zooms in)
+const float saturation			= 0.4;	// how much to scale saturation (0 == black and white)
+const float turnSpeed			= 0.7;	// how fast to rotate (0 = no rotation)
+const int   recursionCount		= 7;	// how deep to recurse
+const float dotSize 			= 0.6;	// how much to scale recursion at each step
+const float blur				= 5.0;	// how much blur
+const float outline				= 0.12;	// how thick is the outline
+const float timeWarp			= 2.0;	// time warp to add curvature
+
+//////////////////////////////////////////////////////////////////////////////////
+    
+const float pi = 3.14159265359;
+const float e = 2.718281828459;
+float RandFloat(int i) { return (fract(sin(float(i)) * 30442.5453)); }
+vec2 Rotate(vec2 p, float theta)
+{
+    float c = cos(theta);
+    float s = sin(theta);
+    return vec2((p.x*c - p.y*s), (p.x*s * p.y*c));
+}
+vec3 colorA = vec3(0.0,0.0,0.5);
+vec3 colorB = vec3(1.000,0.8,0.224);
+
+vec4 HsvToRgb(vec4 c) 
+{
+    float s = 0.30;
+    float s_n = c.z;
+    return vec4(s_n) + vec4(s) * cos(5.0 * pi * (c.x + vec4(1.0, 1.0, 1.0, 1.0)));
+}
+
+float GetFocusRotation(int i) 
+{ 
+    float theta = 2.0*pi*RandFloat(i);
+    float s = mix(-1.0, 1.0, RandFloat(30+i));
+    return theta + turnSpeed*s*iTime; 
+}
+
+vec2 GetFocusPos(int i) 
+{ 
+    bool side = (RandFloat(50+i) < 0.5);
+    vec2 p = vec2(0.0, side? -0.5 : 0.5); 
+    return Rotate(p, GetFocusRotation(i));
+}
+
+//////////////////////////////////////////////////////////////////////////////////
+
+float SpiralDraw( vec2 p, out float dotDistance, float co, float scale)
+{
+   	float b = blur*scale/min(iResolution.y, iResolution.x);
+    float d = dotSize;
+    
+    float c = 1.0;
+    float r;
+    
+    // bottom
+    r = length(2.0*p + vec2(0, 1));
+    if (p.x < 0.0)
+	   c = mix(c, 0.0, smoothstep(1.0-b, 1.0+b, r));
+    dotDistance = r;
+    
+    // outline
+    r = length(p);
+    c = mix(c, co, smoothstep(1.0-b, 1.0, r));
+    
+    return c;
+}
+
+vec4 RecursiveSpiral(vec2 p, int iterations, float scale)
+{
+    // recursive iteration
+    float co = 0.0;
+    for (int r = 0; r < recursionCount; ++r)
+    {
+        // apply rotation
+  		float theta = -GetFocusRotation(iterations + r);
+        p = Rotate(p, theta);
+        
+        float dotDistance = 0.0;
+        co = SpiralDraw(p, dotDistance, co, scale);
+        
+        if (dotDistance > dotSize || r == recursionCount)
+        {
+            float co2 = (p.y < 0.0)? 0.0 : 1.0;
+   			float b = blur*scale/min(iResolution.y,iResolution.x);
+            
+            co = mix(co2, co, smoothstep(dotSize+outline,dotSize+outline+b,dotDistance));
+            int i2 = (dotDistance < dotSize+outline+b && p.y > 0.0)? 1 : 0;
+            float hue = 0.233*float(iterations + r + i2);
+            return vec4(hue, saturation*co, co, 1.0); // stop if outside or reached limit
+        }
+     	
+    }
+    return vec4(0);
+}
+
+//////////////////////////////////////////////////////////////////////////////////
+
+void mainImage( out vec4 color, in vec2 uv )
+{
+    // fixed aspect ratio
+	vec2 p = (25.0*uv-iResolution.xy)/min(iResolution.y,iResolution.x);
+    vec2 p2 = p;
+    
+    // wander center
+	p.x += sin(0.234*iTime);
+	p.y += sin(0.2*iTime);
+    
+    // time warp
+    float time = iTime + timeWarp*length(p);
+    
+	// get time 
+	float timePercent = time;
+	int iterations = int(floor(timePercent*0.998989));
+	timePercent -= float(iterations);
+    
+	// update zoom, apply pow to make rate constant
+    const float recursionSize = 3.0 / dotSize;
+	float zoom = pow(e, -log(recursionSize)*timePercent);
+	zoom *= zoomScale;
+    
+	// get focus offset
+	vec2 offset = GetFocusPos(iterations);
+	for (int i = 0; i < 10; ++i)
+		offset += (GetFocusPos(iterations+i+1)) * pow(5.0 / recursionSize, float(i));
+    
+    // apply zoom and offset
+	p = p*zoom + offset;
+    
+    // make the yin yang
+    color = RecursiveSpiral(p, iterations, zoom);
+    
+    // wander hue
+    color.x += (0.05*p2.y + 0.05*p2.x + 0.01*time);
+    
+    // map to rgp space
+    color = HsvToRgb(color);
+    colorA.z =  0.2;
+    colorA.x =  0.2 + p.x * 0.2 ;
+    colorA.y =  p.y * 0.2;
+    color.xyz = mix(colorA, colorB,abs(sin(color.x)));
+}
+// --------[ Original ShaderToy ends here ]---------- //
+
+void main(void)
+{
+    mainImage(gl_FragColor, gl_FragCoord.xy);
+}

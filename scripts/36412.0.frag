@@ -1,0 +1,59 @@
+// this is supposed to be a heightfeild water simulation
+// but it seems sampler2D is only able to keep values >=0
+// making it impossible for the water level to go back down
+// if anyone manages to fix this, please leave a comment
+// explaining how you did it.
+//
+// i mean, i'm pretty dumb so it might just be me making
+// a beginner's mistake.
+//
+// ok love you bye.
+
+#ifdef GL_ES
+precision mediump float;
+#endif
+
+#extension GL_OES_standard_derivatives : enable
+
+uniform float time;
+uniform vec2 mouse;
+uniform vec2 resolution;
+uniform sampler2D back;
+
+#define rmouse mouse*resolution
+
+vec2 position(vec2 v) {
+  return vec2(v.x/resolution.x,v.y/resolution.y);
+}
+
+void main( void ) {
+
+	vec2 pos = position(gl_FragCoord.xy);
+	vec2 dx  = position(vec2(1,0));
+	vec2 dy  = position(vec2(0,1));
+	
+	float dist = length(rmouse.xy-gl_FragCoord.xy);
+	float i = 1.-smoothstep(0.,10.,dist);
+	
+	vec4 me = texture2D(back,pos);
+	float a = texture2D(back,pos+dx).r;
+	float b = texture2D(back,pos-dx).r;
+	float c = texture2D(back,pos+dy).r;
+	float d = texture2D(back,pos-dy).r;
+	
+	
+//Not certain if this is the effect you were trying to obtain
+//modified the code to dampen the backbuffer values
+//try using values between 0.245 and 0.2495, simple but effective
+
+	
+	//float av = (a+b+c+d)*.25;
+	float av = (a+b+c+d)*.248;
+	
+	me.g+=av-me.r;
+	me.g*=.99;
+	me.r+=me.g;
+
+	gl_FragColor = vec4(me.r,me.g,me.b,1.)+vec4(i,0.,0.,1.);
+}
+
