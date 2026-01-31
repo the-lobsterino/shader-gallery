@@ -1,95 +1,87 @@
 #!/usr/bin/env python3
 """
-Extract features from shaders and compute similarity relations.
-Uses inverted index to avoid O(n²) full comparison.
+Ultra-light feature extraction - streaming approach.
 """
 import os
 import re
 import json
 from collections import defaultdict
-from pathlib import Path
 
-SCRIPTS_DIR = Path('scripts')
-COMMON_FUNCS = {'main', 'if', 'for', 'while', 'return'}
-BUILTIN_TYPES = {'vec2', 'vec3', 'vec4', 'float', 'int', 'mat2', 'mat3', 'mat4', 'bool', 'void', 'sampler2D'}
+SCRIPTS_DIR = 'scripts'
+SKIP = {'main','if','for','while','return','else','vec2','vec3','vec4','float',
+        'int','mat2','mat3','mat4','bool','void','sampler2D','uniform'}
 
-def extract_features(code):
-    """Extract function calls as features."""
-    # Find function calls
-    funcs = set(re.findall(r'\b([a-zA-Z_]\w*)\s*\(', code))
-    # Remove common/builtin
-    funcs -= COMMON_FUNCS
-    funcs -= BUILTIN_TYPES
-    return funcs
+def get_features(path):
+    try:
+        code = open(path, errors='ignore').read().lower()
+        funcs = set(re.findall(r'\b([a-z][a-z0-9_]{2,10})\s*\(', code))
+        return funcs - SKIP
+    except:
+        return set()
 
-def jaccard(set1, set2):
-    """Jaccard similarity coefficient."""
-    if not set1 or not set2:
-        return 0.0
-    intersection = len(set1 & set2)
-    union = len(set1 | set2)
-    return intersection / union if union else 0.0
+print("Loading...", flush=True)
+files = [f for f in os.listdir(SCRIPTS_DIR) if f.endswith('.frag')]
+print(f"Found {len(files)} shaders", flush=True)
 
-def main():
-    print("Loading shaders...")
-    shaders = {}
-    for f in SCRIPTS_DIR.glob('*.frag'):
-        shader_id = f.stem
-        code = f.read_text(errors='ignore')
-        features = extract_features(code)
-        if features:  # Only include shaders with extractable features
-            shaders[shader_id] = features
-    
-    print(f"Extracted features from {len(shaders)} shaders")
-    
-    # Build inverted index: feature -> set of shader_ids
-    print("Building inverted index...")
-    inverted = defaultdict(set)
-    for sid, features in shaders.items():
-        for feat in features:
-            inverted[feat].add(sid)
-    
-    print(f"Index has {len(inverted)} unique features")
-    
-    # Compute relations using inverted index
-    print("Computing similarities...")
-    relations = {}
-    processed = 0
-    
-    for sid, features in shaders.items():
-        # Get candidate shaders (those sharing at least one feature)
-        candidates = set()
-        for feat in features:
-            candidates.update(inverted[feat])
-        candidates.discard(sid)  # Remove self
-        
-        # Compute similarity only with candidates
-        similarities = []
-        for cid in candidates:
-            sim = jaccard(features, shaders[cid])
-            if sim > 0.1:  # Threshold to reduce noise
-                similarities.append((cid, sim))
-        
-        # Keep top 10
-        similarities.sort(key=lambda x: -x[1])
-        relations[sid] = [cid for cid, _ in similarities[:10]]
-        
-        processed += 1
-        if processed % 1000 == 0:
-            print(f"  {processed}/{len(shaders)}")
-    
-    # Save features (compact format)
-    print("Saving features.json...")
-    features_compact = {sid: list(feats) for sid, feats in shaders.items()}
-    with open('features.json', 'w') as f:
-        json.dump(features_compact, f)
-    
-    # Save relations
-    print("Saving relations.json...")
-    with open('relations.json', 'w') as f:
-        json.dump(relations, f)
-    
-    print(f"Done! {len(relations)} shaders with relations.")
+# Phase 1: Build inverted index (feature -> shader_ids)
+print("Building index...", flush=True)
+inverted = defaultdict(list)
+shader_features = {}
 
-if __name__ == '__main__':
-    main()
+for i, f in enumerate(files):
+    sid = f[:-5]  # remove .frag
+    feats = get_features(f'{SCRIPTS_DIR}/{f}')
+    if len(feats) >= 3:
+        shader_features[sid] = feats
+        for feat in feats:
+            inverted[feat].append(sid)
+    if (i+1) % 5000 == 0:
+        print(f"  indexed {i+1}", flush=True)
+
+print(f"Indexed {len(shader_features)} shaders", flush=True)
+
+# Filter features used by 10-2000 shaders (useful for comparison)
+good_feats = {f for f,sids in inverted.items() if 10 < len(sids) < 2000}
+print(f"Using {len(good_feats)} features", flush=True)
+
+# Phase 2: Compute relations batch by batch
+print("Computing relations...", flush=True)
+relations = {}
+sids = list(shader_features.keys())
+
+for i, sid in enumerate(sids):
+    my_feats = shader_features[sid] & good_feats
+    if len(my_feats) < 2:
+        continue
+    
+    # Get candidates sharing any feature
+    candidates = set()
+    for f in my_feats:
+        candidates.update(inverted[f])
+    candidates.discard(sid)
+    
+    # Score by Jaccard
+    scores = []
+    for cid in candidates:
+        their_feats = shader_features.get(cid, set()) & good_feats
+        if len(their_feats) < 2:
+            continue
+        inter = len(my_feats & their_feats)
+        union = len(my_feats | their_feats)
+        if union > 0 and inter/union > 0.2:
+            scores.append((cid, inter/union))
+    
+    scores.sort(key=lambda x: -x[1])
+    if scores:
+        relations[sid] = [c for c,_ in scores[:10]]
+    
+    if (i+1) % 5000 == 0:
+        print(f"  processed {i+1}", flush=True)
+        # Save checkpoint
+        with open('relations.json', 'w') as f:
+            json.dump(relations, f)
+
+# Final save
+with open('relations.json', 'w') as f:
+    json.dump(relations, f)
+print(f"Done! {len(relations)} shaders with relations", flush=True)

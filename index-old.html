@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GLSL Gallery</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { 
+      background: #0a0a0f; 
+      color: #e0e0e0; 
+      font-family: 'Courier New', monospace;
+      min-height: 100vh;
+    }
+    header {
+      padding: 20px;
+      text-align: center;
+      background: linear-gradient(180deg, #1a1a2e 0%, #0a0a0f 100%);
+      border-bottom: 1px solid #333;
+    }
+    header h1 { 
+      font-size: 2em; 
+      background: linear-gradient(90deg, #ff6b6b, #feca57, #48dbfb, #ff9ff3);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    header p { color: #888; margin-top: 5px; }
+    
+    .viewer {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+    }
+    
+    #canvas-container {
+      position: relative;
+      width: 100%;
+      max-width: 600px;
+      aspect-ratio: 1;
+      border: 2px solid #333;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    
+    canvas { width: 100%; height: 100%; display: block; }
+    
+    .controls {
+      display: flex;
+      gap: 10px;
+      margin: 20px 0;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    
+    button {
+      background: #1a1a2e;
+      border: 1px solid #444;
+      color: #fff;
+      padding: 10px 20px;
+      cursor: pointer;
+      border-radius: 4px;
+      font-family: inherit;
+      transition: all 0.2s;
+    }
+    button:hover { background: #2a2a4e; border-color: #666; }
+    
+    #shader-id { 
+      color: #feca57; 
+      font-size: 1.2em;
+      margin: 10px 0;
+    }
+    #shader-id a { color: inherit; }
+    
+    #error {
+      color: #ff6b6b;
+      background: #1a0a0a;
+      padding: 10px;
+      border-radius: 4px;
+      max-width: 600px;
+      white-space: pre-wrap;
+      font-size: 0.9em;
+      display: none;
+    }
+    #error.show { display: block; }
+    
+    .similar {
+      margin-top: 20px;
+      text-align: center;
+    }
+    .similar h3 { color: #888; margin-bottom: 10px; }
+    .similar-list {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .similar-list button {
+      padding: 5px 12px;
+      font-size: 0.9em;
+      background: #0d0d15;
+    }
+    
+    #stats { color: #666; font-size: 0.85em; margin-top: 20px; }
+    
+    footer {
+      text-align: center;
+      padding: 20px;
+      color: #444;
+      border-top: 1px solid #222;
+      margin-top: 40px;
+    }
+    footer a { color: #666; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>✦ GLSL Gallery ✦</h1>
+    <p>Explore fragment shaders from GLSL Sandbox</p>
+  </header>
+  
+  <div class="viewer">
+    <div class="controls">
+      <button onclick="loadRandom()">🎲 Random</button>
+      <button onclick="loadPrev()">◀ Prev</button>
+      <button onclick="loadNext()">Next ▶</button>
+      <button onclick="togglePause()">⏸ Pause</button>
+    </div>
+    
+    <div id="shader-id">Loading...</div>
+    
+    <div id="canvas-container">
+      <canvas id="c"></canvas>
+    </div>
+    
+    <div id="error"></div>
+    
+    <div class="similar">
+      <h3>Similar Shaders</h3>
+      <div id="similar-list" class="similar-list"></div>
+    </div>
+    
+    <div id="stats"></div>
+  </div>
+  
+  <footer>
+    <p>Built by <a href="https://the-lobsterino.github.io">🦞 The Lobsterino</a> | 
+    Shaders from <a href="https://glslsandbox.com">GLSL Sandbox</a></p>
+  </footer>
+
+  <script>
+    const canvas = document.getElementById('c');
+    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+    const errorDiv = document.getElementById('error');
+    const shaderIdDiv = document.getElementById('shader-id');
+    const similarList = document.getElementById('similar-list');
+    const statsDiv = document.getElementById('stats');
+    
+    let manifest = null;
+    let relations = null;
+    let currentIdx = 0;
+    let program = null;
+    let startTime = Date.now();
+    let animFrame = null;
+    let paused = false;
+    let mouseX = 0.5, mouseY = 0.5;
+    let history = [];
+
+    canvas.addEventListener('mousemove', e => {
+      const rect = canvas.getBoundingClientRect();
+      mouseX = (e.clientX - rect.left) / rect.width;
+      mouseY = 1.0 - (e.clientY - rect.top) / rect.height;
+    });
+
+    // Vertex shader with common varyings that GLSL Sandbox shaders expect
+    const vertSrc = `
+      attribute vec2 pos;
+      varying vec2 surfacePosition;
+      void main() {
+        surfacePosition = pos;
+        gl_Position = vec4(pos, 0.0, 1.0);
+      }
+    `;
+
+    // GLSL Sandbox standard prefix - only precision, uniforms/varyings added if missing
+    const prefixPrecision = `
+      #ifdef GL_ES
+      precision mediump float;
+      #endif
+    `;
+    
+    const defaultVaryings = `
+      varying vec2 surfacePosition;
+    `;
+
+    async function init() {
+      try {
+        const [mResp, rResp] = await Promise.all([
+          fetch('manifest.json'),
+          fetch('relations.json').catch(() => ({ ok: false }))
+        ]);
+        
+        manifest = await mResp.json();
+        if (rResp.ok) relations = await rResp.json();
+        
+        statsDiv.textContent = `${manifest.shaders.length.toLocaleString()} shaders loaded`;
+        
+        // Check URL hash for specific shader
+        const hash = window.location.hash.slice(1);
+        if (hash && manifest.shaders.includes(hash)) {
+          currentIdx = manifest.shaders.indexOf(hash);
+          loadShader(hash);
+        } else {
+          loadRandom();
+        }
+      } catch (e) {
+        errorDiv.textContent = `Init error: ${e.message}`;
+        errorDiv.classList.add('show');
+      }
+    }
+
+    function loadRandom() {
+      currentIdx = Math.floor(Math.random() * manifest.shaders.length);
+      loadShader(manifest.shaders[currentIdx]);
+    }
+
+    function loadNext() {
+      currentIdx = (currentIdx + 1) % manifest.shaders.length;
+      loadShader(manifest.shaders[currentIdx]);
+    }
+
+    function loadPrev() {
+      currentIdx = (currentIdx - 1 + manifest.shaders.length) % manifest.shaders.length;
+      loadShader(manifest.shaders[currentIdx]);
+    }
+
+    function togglePause() {
+      paused = !paused;
+      if (!paused && program) render();
+    }
+
+    async function loadShader(id) {
+      errorDiv.classList.remove('show');
+      shaderIdDiv.innerHTML = `#<a href="https://glslsandbox.com/e#${id}" target="_blank">${id}</a>`;
+      window.location.hash = id;
+      
+      // Update similar shaders
+      updateSimilar(id);
+      
+      try {
+        const resp = await fetch(`scripts/${id}.frag`);
+        if (!resp.ok) throw new Error(`Shader ${id} not found`);
+        let code = await resp.text();
+        
+        // Clean up code - remove existing precision/ifdef blocks we'll provide
+        code = code.replace(/#ifdef GL_ES[\s\S]*?#endif/gm, '');
+        code = code.replace(/precision\s+(lowp|mediump|highp)\s+float\s*;/g, '');
+        
+        // Only add uniforms/varyings if not already defined
+        let additions = '';
+        if (!/uniform\s+float\s+time\b/.test(code)) additions += 'uniform float time;\n';
+        if (!/uniform\s+vec2\s+resolution\b/.test(code)) additions += 'uniform vec2 resolution;\n';
+        if (!/uniform\s+vec2\s+mouse\b/.test(code)) additions += 'uniform vec2 mouse;\n';
+        if (!/varying\s+vec2\s+surfacePosition\b/.test(code)) additions += 'varying vec2 surfacePosition;\n';
+        
+        compileAndRun(prefixPrecision + additions + '\n' + code);
+      } catch (e) {
+        errorDiv.textContent = e.message;
+        errorDiv.classList.add('show');
+      }
+    }
+
+    function updateSimilar(id) {
+      similarList.innerHTML = '';
+      if (!relations || !relations[id]) {
+        similarList.innerHTML = '<span style="color:#555">No relations data</span>';
+        return;
+      }
+      
+      const similar = relations[id].slice(0, 10);
+      similar.forEach(sid => {
+        const btn = document.createElement('button');
+        btn.textContent = sid;
+        btn.onclick = () => {
+          currentIdx = manifest.shaders.indexOf(sid);
+          loadShader(sid);
+        };
+        similarList.appendChild(btn);
+      });
+    }
+
+    function compileAndRun(fragSrc) {
+      if (animFrame) cancelAnimationFrame(animFrame);
+      if (program) gl.deleteProgram(program);
+
+      const vs = gl.createShader(gl.VERTEX_SHADER);
+      gl.shaderSource(vs, vertSrc);
+      gl.compileShader(vs);
+
+      const fs = gl.createShader(gl.FRAGMENT_SHADER);
+      gl.shaderSource(fs, fragSrc);
+      gl.compileShader(fs);
+
+      if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) {
+        const log = gl.getShaderInfoLog(fs);
+        errorDiv.textContent = log;
+        errorDiv.classList.add('show');
+        return;
+      }
+
+      program = gl.createProgram();
+      gl.attachShader(program, vs);
+      gl.attachShader(program, fs);
+      gl.linkProgram(program);
+
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        errorDiv.textContent = gl.getProgramInfoLog(program);
+        errorDiv.classList.add('show');
+        return;
+      }
+
+      const buf = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+
+      const pos = gl.getAttribLocation(program, 'pos');
+      gl.enableVertexAttribArray(pos);
+      gl.vertexAttribPointer(pos, 2, gl.FLOAT, false, 0, 0);
+
+      startTime = Date.now();
+      paused = false;
+      render();
+    }
+
+    function render() {
+      if (!program || paused) return;
+
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      gl.useProgram(program);
+
+      const t = (Date.now() - startTime) / 1000;
+      const timeLoc = gl.getUniformLocation(program, 'time');
+      const resLoc = gl.getUniformLocation(program, 'resolution');
+      const mouseLoc = gl.getUniformLocation(program, 'mouse');
+
+      if (timeLoc) gl.uniform1f(timeLoc, t);
+      if (resLoc) gl.uniform2f(resLoc, canvas.width, canvas.height);
+      if (mouseLoc) gl.uniform2f(mouseLoc, mouseX, mouseY);
+
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      animFrame = requestAnimationFrame(render);
+    }
+
+    // Resize canvas properly
+    function resize() {
+      const container = document.getElementById('canvas-container');
+      const size = Math.min(container.clientWidth, container.clientHeight, 600);
+      canvas.width = size;
+      canvas.height = size;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', e => {
+      if (e.key === 'ArrowRight') loadNext();
+      else if (e.key === 'ArrowLeft') loadPrev();
+      else if (e.key === 'r') loadRandom();
+      else if (e.key === ' ') { e.preventDefault(); togglePause(); }
+    });
+
+    init();
+  </script>
+</body>
+</html>
