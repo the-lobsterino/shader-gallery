@@ -1,0 +1,1 @@
+precision highp float;uniform vec2 resolution;void main(){vec2 p=gl_FragCoord.xy/resolution.yy*vec2(5,3)/3.;if(p.x>.5)p.x=1.-p.x;gl_FragColor=vec4(min(.75,smoothstep(.99,step(p.y,.63),.25+p.x+p.y)+smoothstep(.99,step(1.-p.y,.63),1.25+p.x-p.y)));}

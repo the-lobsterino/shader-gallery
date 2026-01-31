@@ -1,0 +1,1 @@
+    float val = sin(iTime+p1.x+p1.y*20.0)*(0.8

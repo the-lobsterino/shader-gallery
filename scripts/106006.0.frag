@@ -1,0 +1,2 @@
+#define _ precision lowp float;uniform float time;uniform vec2 resolution;void main(){vec2 p=(gl_FragCoord.xy/resolution.xy)*2.-1.;gl_FragColor=(24.*p.y*1./137.)*vec4(8.,8.9,98.,99.);} 
+_//one liner by speedhead spatiosa amiga 500\\_

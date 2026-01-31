@@ -1,0 +1,27 @@
+/* lame-ass tunnel by kusma */
+
+#ifdef GL_ES
+precision mediump float;
+#endif
+
+uniform float time;
+uniform vec2 mouse;
+uniform vec2 resolution;
+
+void main( void ) {
+	vec2 position = (gl_FragCoord.xy - resolution * 0.5) / resolution.yy;
+	//position.y += dot(position,position);
+	position.y *= position.x;
+	float th = atan(position.y, position.x) / (0.1 * 3.1415926) + 4. + mouse.x;
+	float dd = length(position);
+	float d = .95 / dd + time + mouse.y;
+
+	vec3 uv = vec3(th + d, th - d, th + sin(d) * 0.1);
+	float a = 0.5 + cos(uv.x * 3.1415926 * 2.0) * 0.5;
+	float b = 0.5 + cos(uv.y * 3.1415926 * 4.0) * 0.5;
+	float c = 0.5 + cos(uv.z * 3.1415926 * 6.0) * 0.5;
+	vec3 color = mix(vec3(1.7, 1.7, .8), vec3(0.2, 0.4, .3), pow(a, .5)) * 0.75;
+	color += mix(vec3(2.8, 1.4, .8), vec3(0.3, 0.1, 0.2),  pow(b, 0.4)) * 0.75;
+	color += mix(vec3(1.65, 1.5, 0.8), vec3(.4, 0.2, 0.2),  pow(c, 0.2)) * 0.75;
+	gl_FragColor = vec4(color*0.5 * clamp(dd, 0.0, 1.0), 1.0);
+}

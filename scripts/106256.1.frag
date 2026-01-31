@@ -1,0 +1,49 @@
+#extension GL_OES_standard_derivatives : enable
+
+ precision highp float;
+
+                // glslsandbox uniforms
+                uniform float u_time;
+                uniform vec2 u_mouse;
+                uniform vec2 u_resolution;
+
+                // shadertoy emulation
+                #define time u_time
+                #define iMouse u_mouse
+                #define resolution u_resolution
+                
+                mat2 rotate2D(float r) {
+                    return mat2(cos(r), sin(r), -sin(r), cos(r));
+                }
+                
+                void main() {
+                    // Normalized pixel coordinates (from 0 to 1)
+                    vec2 uv = (gl_FragCoord.xy - 0.5 * resolution.xy) / resolution.y;
+                    vec3 col = vec3(0);
+                    float t = time * 0.05; // Adjust the time factor for faster animation
+                
+                    vec2 n = vec2(0);
+                    vec2 q = vec2(0.0);
+                    vec2 p = uv;
+                    float d = dot(p, p);
+                    float S = 12.0;
+                    float a = 0.0;
+                    mat2 m = rotate2D(5.);
+			
+			float ti = time*4.0;
+			
+                
+                    for (float j = 0.; j < 20.0; j++) {
+                        p *= m;
+                        n *= m;
+                        q = p * S + t * 5. + sin(t * 60. - d * 4.) * 1. + j + n;
+                        a += dot(cos(q) / S, vec2(0.2));
+                        n -= sin(q+ti);
+                        S *= 1.2;
+                    }
+                
+                    col = vec3(4, 2, 1) * (a + 0.2) + a + a - d;
+                
+                    // Output to screen
+                    gl_FragColor = vec4(col, 1.0);
+                }
